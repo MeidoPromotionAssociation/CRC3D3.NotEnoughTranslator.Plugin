@@ -1,0 +1,1 @@
+# CRC3D3.NotEnoughTranslator.Plugin
