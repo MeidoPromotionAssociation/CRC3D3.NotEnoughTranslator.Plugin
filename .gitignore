@@ -1,0 +1,11 @@
+/.idea
+.windsurfrules
+*.cs~
+qodana.yaml
+*.pyc
+/.claude
+/game
+/CRC3D3.NotEnoughTranslator.Plugin/.idea
+/CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/obj
+/CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/bin
+/lib
