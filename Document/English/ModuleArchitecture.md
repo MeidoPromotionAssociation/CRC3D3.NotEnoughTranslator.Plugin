@@ -29,21 +29,31 @@ XUAT interop is shared infrastructure, not a fourth translation module. It prote
 
 ## 3. Data Flow
 
+Paths below are relative to `BepInEx/NotEnoughTranslator`. They follow JAT's module boundaries without a language directory:
+
+| Module | Resource loading | Dump output |
+| --- | --- | --- |
+| UI / I2 | `UI/Text` | `Dump/UI/Text` |
+| General text | `Text` | `Dump/Text` |
+| Texture replacement | `Texture` | `Dump/Texture` |
+
+Each loader scans only its own resource subtree, never the shared root or dump directories. ZIP packs must also be placed in the corresponding text module's subtree.
+
 ```text
-CSV / ZIP
+UI/Text: CSV / ZIP
   -> AsyncTranslationLoader
   -> TranslationLoadResult.I2Terms
   -> UITranslateManager
   -> UITextTranslatePatch
   -> I2 display flow
 
-JSONL / ZIP
+Text: JSONL / ZIP
   -> AsyncTranslationLoader
   -> TextTranslations / TextRegexTranslations
   -> TextTranslateManager
   -> Text display hooks (not yet connected)
 
-Images under Textures
+Images under Texture
   -> TextureReplacementCatalog path index
   -> TextureReplaceManager
   -> Resource or image display hooks (not yet connected)
@@ -75,7 +85,7 @@ All three managers provide `Init` / `Reload` / `Unload`, called on Unity's main 
 - Reloading keeps the previous snapshot available. Cancelled or obsolete tasks cannot publish stale results.
 - File-reading failures retain the previous snapshot. Successfully loading an empty directory clears that module's old resources.
 - Texture bytes are read when queried, without caching image contents; path scanning and image reading are separate stages.
-- Configuration-change events post reload requests to the main thread, coalescing pending requests. The plugin's `Update` only checks the reload shortcut; it does not drive resource loading or interop initialization.
+- Configuration-change events post reload requests to the main thread, coalescing pending requests. The plugin's `Update` only checks reload and dump-flush shortcuts; it never polls resource loading, dump buffers, or interop initialization.
 
 ### Display Refresh
 
@@ -109,12 +119,29 @@ These are Harmony owner IDs, not the BepInEx plugin GUID; the plugin GUID remain
 
 All three expose `IsLoaded`, `IsLoading`, and `EntryCount`. The text module also exposes `ExactCount` / `RegexCount`; the UI module exposes `IsHookInstalled`.
 
+### Dump Infrastructure
+
+`DumpManager` is shared infrastructure, not another translation module. The plugin initializes its directories once and shuts it down after removing module hooks. A lock protects session deduplication and buffered writes; no timers or frame polling are used.
+
+| API | Purpose |
+| --- | --- |
+| `UITranslateManager.DumpTerm(term, original)` | Export a missing I2 term after a snapshot is published, including during the first forced UI refresh |
+| `DumpManager.DumpTerm(term, original)` | Buffer a caller-confirmed untranslated term as a CSV template |
+| `DumpManager.DumpText(original)` | Buffer caller-confirmed untranslated general text as a JSONL template |
+| `DumpManager.DumpTexture(textureName, pngData)` | Write an original PNG using the replacement catalog's filename key, without overwriting existing files |
+| `DumpManager.Flush()` | Flush both text buffers and report whether all writes succeeded |
+
+The I2 query hook forwards missing text terms without modifying native results. General text's normal query API dumps misses only after loading; `IsInTranslationDictionary` remains a side-effect-free probe. Initial loading does not dump the entire pending dictionary as missing. General text display hooks and texture capture/PNG encoding still need game integration.
+
+Text-write failures retain buffers and attempt to restore the previous file length. PNG output uses a temporary file and a non-overwriting move. Dump deduplication survives resource reloads and is separate from XUAT's translated-output registry; it is not a translation-query cache. Switches, thresholds, and flush triggers are documented in the [resource guide](TranslationGuide.md).
+
 Source entry points:
 
 - [UITranslateManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Manger/UITranslateManager.cs)
 - [TextTranslateManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Manger/TextTranslateManager.cs)
 - [TextureReplaceManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Manger/TextureReplaceManager.cs)
 - [ResourceModule.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Loader/ResourceModule.cs)
+- [DumpManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Manger/DumpManager.cs)
 
 ## 7. XUAT Interoperability
 

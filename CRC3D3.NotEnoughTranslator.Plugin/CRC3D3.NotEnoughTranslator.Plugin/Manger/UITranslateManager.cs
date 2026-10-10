@@ -21,8 +21,8 @@ public static class UITranslateManager
     public static int EntryCount => _catalog.ExactCount;
 
     /// <summary>
-    /// 在 Unity 主线程安装 I2 翻译与本地化就绪补丁，并开始异步加载 UI 词条。
-    /// Install I2 translation and localization-readiness hooks on Unity's main thread and start loading UI terms asynchronously.
+    /// 在 Unity 主线程安装 I2 翻译与本地化就绪补丁，并从 UI/Text 异步加载词条。
+    /// Install I2 translation and localization-readiness hooks on Unity's main thread and load terms asynchronously from UI/Text.
     /// </summary>
     public static void Init()
     {
@@ -31,7 +31,7 @@ public static class UITranslateManager
         LocalizationReadyPatch.Install();
 
         _module = new ResourceModule<TranslationLoadResult>("UI", token =>
-            AsyncTranslationLoader.LoadOnceAsync("UI", NotEnoughTranslator.TranslationPath,
+            AsyncTranslationLoader.LoadOnceAsync("UI", NotEnoughTranslator.UITextPath,
                 NotEnoughTranslator.AllowFilesInZipLoadInOrder.Value, token,
                 new CsvTranslationFileProcessor()), ApplyResult);
         _module.Reload();
@@ -47,6 +47,19 @@ public static class UITranslateManager
     public static bool TryGetTranslation(string term, out string translation)
     {
         return _catalog.TryGetTranslation(term, out translation);
+    }
+
+    /// <summary>
+    /// 首份快照发布后导出未翻译的 I2 词条，包含发布过程触发的首次 UI 刷新。
+    /// Dump untranslated I2 terms after the first snapshot is published, including the initial UI refresh during publication.
+    /// </summary>
+    /// <param name="term">查询未命中的 I2 词条键 / The I2 term key from an unsuccessful lookup.</param>
+    /// <param name="original">游戏返回的原始显示文字 / The original display text returned by the game.</param>
+    public static void DumpTerm(string term, string original)
+    {
+        var catalog = _catalog;
+        if (catalog == TranslationCatalog.Empty || catalog.TryGetTranslation(term, out _)) return;
+        DumpManager.DumpTerm(term, original);
     }
 
     /// <summary>

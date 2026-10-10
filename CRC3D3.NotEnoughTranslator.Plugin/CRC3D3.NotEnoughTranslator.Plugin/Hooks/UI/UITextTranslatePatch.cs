@@ -108,8 +108,8 @@ internal static class UITextTranslatePatch
     }
 
     /// <summary>
-    /// 为未显式指定语言的查询处理并返回 NET 译文，处理失败时保留 I2 原结果。
-    /// Process and return NET translations for queries without an explicit language, preserving I2 results on failure.
+    /// 为未显式指定语言的查询返回 NET 译文或按配置导出未翻译词条，失败时保留 I2 原结果。
+    /// Return NET translations or optionally dump missing terms for queries without an explicit language, preserving I2 results on failure.
     /// </summary>
     /// <param name="Term">查询的 I2 词条键 / The queried I2 term key.</param>
     /// <param name="advancedFormat">可选的高级格式处理器 / The optional advanced-format processor.</param>
@@ -129,7 +129,17 @@ internal static class UITextTranslatePatch
 
         try
         {
-            if (!UITranslateManager.TryGetTranslation(Term, out var translated)) return;
+            if (!UITranslateManager.TryGetTranslation(Term, out var translated))
+            {
+                if (NotEnoughTranslator.EnableTermDump.Value &&
+                    !string.IsNullOrWhiteSpace(Term) && Term != "-")
+                {
+                    var originalTermData = LocalizationManager.GetTermData(Term);
+                    if (originalTermData == null || originalTermData.TermType == eTermType.Text)
+                        UITranslateManager.DumpTerm(Term, Translation);
+                }
+                return;
+            }
             var termData = LocalizationManager.GetTermData(Term);
             if (termData != null && termData.TermType != eTermType.Text) return;
 

@@ -1,16 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <LangVersion>latest</LangVersion>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Configurations>Debug;Release</Configurations>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <RestoreAdditionalProjectSources>
+      https://api.nuget.org/v3/index.json;
+      https://nuget.bepinex.dev/v3/index.json;
+      https://nuget.samboy.dev/v3/index.json
+    </RestoreAdditionalProjectSources>
+    <RootNamespace>CRC3D3.NotEnoughTranslator.Plugin</RootNamespace>
+  </PropertyGroup>
+
   <ItemGroup>
-    <!-- BepInEx -->
     <PackageReference Include="BepInEx.Analyzers" PrivateAssets="all" Version="1.*"/>
     <PackageReference Include="BepInEx.Core" Version="5.*"/>
     <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*"/>
     <PackageReference Include="UnityEngine.Modules" IncludeAssets="compile" Version="2022.3.62"/>
     <PackageReference Include="Newtonsoft.Json" Version="13.*"/>
-    <!-- 不要加 System.Threading.Tasks.Extensions（ValueTask 的来源）：
-         该 DLL 不会随插件输出，游戏目录里也没有，运行时会导致
-         TypeLoadException: Could not resolve the signature of a virtual method。
-         异步一律用 mscorlib 里的 Task/Task<T>。 -->
     <Reference Include="System.IO.Compression"/>
     <Reference Include="System.IO.Compression.FileSystem"/>
     
@@ -33,27 +47,8 @@
     <Authors>MeidoPromotionAssociation</Authors>
     <Company>MeidoPromotionAssociation</Company>
     <Copyright>Bsd 3-Clause License</Copyright>
-    <Description>https://github.com/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin</Description>
+    <Description>https://github.com/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin</Description> <!-- For BepInEx.ConfigurationManager -->
     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
-  </PropertyGroup>
-
-  <PropertyGroup>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
-    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <LangVersion>latest</LangVersion>
-    <TargetFramework>net48</TargetFramework>
-  </PropertyGroup>
-
-  <PropertyGroup>
-    <Configurations>Debug;Release</Configurations>
-    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <RestoreAdditionalProjectSources>
-      https://api.nuget.org/v3/index.json;
-      https://nuget.bepinex.dev/v3/index.json;
-      https://nuget.samboy.dev/v3/index.json
-    </RestoreAdditionalProjectSources>
-    <RootNamespace>CRC3D3.NotEnoughTranslator.Plugin</RootNamespace>
   </PropertyGroup>
 
 </Project>

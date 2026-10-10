@@ -95,8 +95,8 @@ internal sealed class TextureReplacementCatalog
     /// Normalize path separators and extract the filename, stripping supported image or texture extensions.
     /// </summary>
     /// <param name="name">纹理名称或文件路径 / The texture name or file path.</param>
-    /// <returns>用于索引查询的纹理键 / The texture key used for catalog lookup.</returns>
-    private static string GetKey(string name)
+    /// <returns>索引查询与原图导出共用的纹理键 / The shared texture key for catalog lookup and original-image dumps.</returns>
+    internal static string GetKey(string name)
     {
         var fileName = Path.GetFileName(name.Replace('\\', '/'));
         var extension = Path.GetExtension(fileName);

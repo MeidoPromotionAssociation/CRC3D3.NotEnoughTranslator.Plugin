@@ -10,7 +10,10 @@ This document covers NET's resource directories, formats, matching rules, and re
 
 - Configuration file: `BepInEx/config/Github.MeidoPromotionAssociation.CRC3D3.NotEnoughTranslator.Plugin.cfg`
 - Translation root: `BepInEx/NotEnoughTranslator`
-- Texture directory: `BepInEx/NotEnoughTranslator/Textures`
+- UI text directory: `BepInEx/NotEnoughTranslator/UI/Text`
+- General text directory: `BepInEx/NotEnoughTranslator/Text`
+- Texture directory: `BepInEx/NotEnoughTranslator/Texture`
+- Dump root: `BepInEx/NotEnoughTranslator/Dump`
 
 All paths are relative to the game root.
 
@@ -18,24 +21,33 @@ All paths are relative to the game root.
 BepInEx/
   NotEnoughTranslator/
     UI/
-      interface.csv
+      Text/
+        interface.csv
+        ui-pack.zip
     Text/
       common.jsonl
-    translation-pack.zip
-    Textures/
+      text-pack.zip
+    Texture/
       button.png
+    Dump/
+      UI/
+        Text/
+      Text/
+      Texture/
 ```
 
-The UI module recursively reads `.csv` files under the translation root; the general text module reads `.jsonl`. `UI` and `Text` are recommended organizational subdirectories, not mandatory directory boundaries. The foundation's existing root-directory loading behavior is retained.
+NET follows JAT's module directory layout without the target-language layer. The UI module recursively reads `.csv` files only under `UI/Text`; general text reads `.jsonl` only under `Text`; textures are indexed only under `Texture`. These are actual loading boundaries, not merely suggested organization. Files or ZIP packs placed directly in the translation root are not loaded, and `Dump` is never scanned for translations.
+
+When migrating the old layout, move UI CSV files into `UI/Text`, general-text JSONL files into `Text`, and rename `Textures` to `Texture`. Place ZIP packs inside the corresponding text module's directory; there is no compatibility scan of the old shared root.
 
 General text does not read `.txt`. There are no target-language subdirectories or language-selection options: a pack directly supplies the translations to display.
 
-Both text modules can read matching entries directly from ZIP archives without extracting them to disk. Nested ZIP archives are not expanded. The texture module currently indexes loose PNG / JPG / JPEG images under `Textures` only, not images inside ZIP archives.
+Both text modules can read matching entries directly from ZIP archives in their own directories without extracting them to disk. Nested ZIP archives are not expanded. The texture module currently indexes loose PNG / JPG / JPEG images under `Texture` only, not images inside ZIP archives.
 
 ## 2. Loading Order and Overrides
 
-1. Read files in the translation root first, sorted by filename using Ordinal comparison.
-2. Read all subdirectories in Ordinal directory-name order, also sorting files within each directory by Ordinal comparison.
+1. Within each module, read files directly in its resource directory first, sorted by filename using Ordinal comparison.
+2. Read that module's subdirectories in Ordinal directory-name order, also sorting files within each directory by Ordinal comparison.
 3. Process a ZIP at its own position in that sequence. Entries are sorted by their full names by default; disabling `AllowFilesInZipLoadInOrder` uses their original archive order instead.
 4. For duplicate UI terms or exact source strings, a later valid entry overrides an earlier one.
 5. Try regex rules in reverse loading order, giving later rules priority. Stop after the first successful rule; do not chain further rules.
@@ -337,7 +349,7 @@ Choose a **.NET** engine in external regex tools. Validate the JSON-decoded patt
 
 ## 5. Texture Replacement Resources
 
-Place PNG / JPG / JPEG files in `Textures` or its subdirectories.
+Place PNG / JPG / JPEG files in `Texture` or its subdirectories.
 
 - Matching is case-insensitive by filename, ignoring directories and `.tex` / `.png` / `.jpg` / `.jpeg` extensions.
 - For example, `button`, `button.tex`, and `button.png` can all query a replacement file named `button.png`.
@@ -357,12 +369,21 @@ Place PNG / JPG / JPEG files in `Textures` or its subdirectories.
 
 UI reloading forces an I2 refresh. General text and textures currently affect subsequent queries only. If the game has no original translation for a term, a null I2 result does not guarantee restoration of an earlier component text value.
 
+### Dumping Untranslated Resources
+
+The plugin creates `Dump/UI/Text`, `Dump/Text`, and `Dump/Texture` at startup. Dumping is opt-in through the `6Dump` section; all three dump switches are disabled by default.
+
+- `EnableTermDump`: after the first UI snapshot is published, untranslated text-term queries produce CSV records with `Term,Original,Translation`. `Original` is the game's returned display text and `Translation` starts empty. Non-text terms and explicit-language queries are excluded. The UI module must remain enabled; triggering a resource reload can capture another localization pass for currently displayed UI.
+- `EnableTextDump`: misses from the loaded general-text query API produce JSONL records such as `{"original":"source text","text":""}`. Dictionary-only probes do not dump. Actual game-text capture still depends on the pending display hooks.
+- `EnableTexturesDump`: allows `DumpManager.DumpTexture(textureName, pngData)` to write captured original PNG data. The interface does not enumerate game textures, read GPU data, or implement capture hooks. Existing files are not overwritten, and incomplete temporary writes are not published as PNG files.
+- UI terms and general text are deduplicated separately with Ordinal matching for the plugin session. Hot reloads do not reset these records. CSV quoting and JSON escaping preserve commas, quotes, backslashes, and line breaks; there is no normalized TXT copy.
+- `TermDumpThreshold` and `TextDumpThreshold` each default to `100`. Reaching a threshold, pressing the optional `FlushDump` shortcut, changing dump settings, reloading resources, or shutting down the plugin flushes buffered records. There is no periodic or per-frame flush. Failed writes retain their buffers for a later explicit retry; a process crash can still lose unwritten records.
+
+CSV and JSONL dumps use separate timestamped session files. Fill in their empty translation fields, then place the completed files under `UI/Text` or `Text` and reload. PNG dumps belong under `Texture` after editing. Leaving files under `Dump` never activates them as translation resources.
+
 ## 7. Examples and Limitations
 
-- [UI CSV example](../../sample/UI/example.csv)
-- [General text JSONL example](../../sample/Text/example.jsonl)
-
-These files illustrate the formats; they are not a game translation pack. Loaded-entry counts do not measure in-game coverage. Do not modify original data that doubles as a business key. See [module architecture](ModuleArchitecture.md) for display integration, I2 isolation, and texture-lifetime requirements.
+The examples in sections 3 and 4 illustrate the formats; they are not a game translation pack. Loaded-entry counts do not measure in-game coverage. Do not modify original data that doubles as a business key. See [module architecture](ModuleArchitecture.md) for display integration, I2 isolation, and texture-lifetime requirements.
 
 ## 8. XUAT Interoperability
 

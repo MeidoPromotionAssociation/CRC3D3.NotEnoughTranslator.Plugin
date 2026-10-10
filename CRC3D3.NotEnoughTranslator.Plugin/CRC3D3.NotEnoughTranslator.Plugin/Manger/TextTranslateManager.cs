@@ -21,14 +21,14 @@ public static class TextTranslateManager
     public static bool AreDisplayHooksInstalled => _displayHooksInstalled;
 
     /// <summary>
-    /// 在 Unity 主线程初始化通用文本模块，并异步加载 JSONL 精确与正则译文。
-    /// Initialize the general-text module on Unity's main thread and load JSONL exact and regex translations asynchronously.
+    /// 在 Unity 主线程初始化通用文本模块，并从 Text 异步加载 JSONL 精确与正则译文。
+    /// Initialize the general-text module on Unity's main thread and load JSONL exact and regex translations asynchronously from Text.
     /// </summary>
     public static void Init()
     {
         if (_module != null || !NotEnoughTranslator.EnableTextTranslation.Value) return;
         _module = new ResourceModule<TranslationLoadResult>("Text", token =>
-            AsyncTranslationLoader.LoadOnceAsync("Text", NotEnoughTranslator.TranslationPath,
+            AsyncTranslationLoader.LoadOnceAsync("Text", NotEnoughTranslator.TranslationTextPath,
                 NotEnoughTranslator.AllowFilesInZipLoadInOrder.Value, token,
                 new JsonlTranslationFileProcessor(TimeSpan.FromMilliseconds(
                     NotEnoughTranslator.RegexTimeoutMilliseconds.Value))), ApplyResult);
@@ -36,8 +36,8 @@ public static class TextTranslateManager
     }
 
     /// <summary>
-    /// 查询通用文本译文；互操作启用时跳过已登记的译文，并登记成功结果。
-    /// Look up general-text translations, skipping recorded outputs and recording successful results when interop is active.
+    /// 查询通用文本译文，按配置导出未命中的原文，并在互操作启用时跳过和登记已译文字。
+    /// Look up general-text translations, optionally dump misses, and skip or record translated output while interop is active.
     /// </summary>
     /// <param name="sourceText">待翻译的显示文字 / The display text to translate.</param>
     /// <param name="translation">查询成功时返回的译文 / The translated text returned on a successful lookup.</param>
@@ -47,7 +47,11 @@ public static class TextTranslateManager
         translation = null;
         if (XUATInterop.IsInstalled &&
             (IsNetTranslatedText(sourceText) || UITranslateManager.IsNetTranslatedText(sourceText))) return false;
-        if (!_catalog.TryGetTranslation(sourceText, out translation)) return false;
+        if (!_catalog.TryGetTranslation(sourceText, out translation))
+        {
+            if (IsLoaded && NotEnoughTranslator.EnableTextDump.Value) DumpManager.DumpText(sourceText);
+            return false;
+        }
         MarkTranslated(translation);
         return true;
     }
