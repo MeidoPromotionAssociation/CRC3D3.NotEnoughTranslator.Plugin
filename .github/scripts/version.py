@@ -22,7 +22,6 @@ import sys
 
 PLUGIN_CS = os.path.join(
     "CRC3D3.NotEnoughTranslator.Plugin",
-    "CRC3D3.NotEnoughTranslator.Plugin",
     "CRC3D3.NotEnoughTranslator.Plugin.cs",
 )
 

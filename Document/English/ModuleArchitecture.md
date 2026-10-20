@@ -137,11 +137,11 @@ Text-write failures retain buffers and attempt to restore the previous file leng
 
 Source entry points:
 
-- [UITranslateManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Manger/UITranslateManager.cs)
-- [TextTranslateManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Manger/TextTranslateManager.cs)
-- [TextureReplaceManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Manger/TextureReplaceManager.cs)
-- [ResourceModule.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Loader/ResourceModule.cs)
-- [DumpManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Manger/DumpManager.cs)
+- [UITranslateManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Manger/UITranslateManager.cs)
+- [TextTranslateManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Manger/TextTranslateManager.cs)
+- [TextureReplaceManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Manger/TextureReplaceManager.cs)
+- [ResourceModule.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Loader/ResourceModule.cs)
+- [DumpManager.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Manger/DumpManager.cs)
 
 ## 7. XUAT Interoperability
 
@@ -172,7 +172,7 @@ Initialization runs from plugin `Start`. Late assembly-load events post a callba
 
 `EnableXUATInterop/启用 XUAT 互操作` in `2General` is enabled by default. `XUATInterop.IsInstalled` and `PatchedMethodCount` expose integration status. Reflection compatibility checks do not replace validation with a real XUAT version or the game.
 
-See [XUATInterop.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Utils/XUATInterop.cs) and [TranslatedTextRegistry.cs](../../CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/Translation/TranslatedTextRegistry.cs).
+See [XUATInterop.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Utils/XUATInterop.cs) and [TranslatedTextRegistry.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Translation/TranslatedTextRegistry.cs).
 
 ## 8. Future Integration Requirements
 
