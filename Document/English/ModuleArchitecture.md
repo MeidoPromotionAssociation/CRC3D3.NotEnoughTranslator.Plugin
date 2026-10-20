@@ -195,7 +195,9 @@ Place matching CRC versions of these assemblies in the repository-root `lib` dir
 Run from the repository root:
 
 ```powershell
-dotnet build CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin.csproj -c Release
+dotnet build CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin.csproj -c Release
 ```
 
 Async code uses `Task`, without adding a `System.Threading.Tasks.Extensions` / `ValueTask` runtime dependency. A successful build does not replace in-game verification.
+
+CI builds the same project: `.github/workflows/build.yml` downloads the three assemblies from the private `MeidoPromotionAssociation/CRC3D3.GameLibs` repository into `lib` before building, so they are never committed to this public repository. That repository keeps one directory per game version (`2.49.2/`, `demo2/`, ...); which one is used is decided by `DEFAULT_VERSION` at the top of `.github/scripts/fetch_game_libs.sh`, and the `GAME_LIBS_VERSION` repository variable overrides it. A tag matching `PluginVersion` additionally runs `.github/workflows/release.yml`, which packages and publishes the release.

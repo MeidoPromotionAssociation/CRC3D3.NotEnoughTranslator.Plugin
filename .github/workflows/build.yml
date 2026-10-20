@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+# 编译只需要读仓库，token 也没有别的用途
+# The build only reads the repository, and the token is not needed for anything else
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+        with:
+          # 不把 token 存进 .git/config，编译过程中的代码就读不到它
+          # Keep the token out of .git/config, so code running during the build cannot read it
+          persist-credentials: false
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.x'
+
+      # 游戏自带的三个程序集不在公共 NuGet 源上，也不能提交进公开仓库，所以从私有仓库
+      # 里按游戏版本分的目录拉取（版本号默认值写在脚本的 DEFAULT_VERSION）
+      # The three game assemblies are on no public feed and must not be committed here, so
+      # they come from the private repository's per-game-version directory (the default
+      # version lives in the script's DEFAULT_VERSION)
+      - name: Fetch Game Libraries
+        env:
+          GH_TOKEN: ${{ secrets.GAME_LIBS_TOKEN }}
+          GAME_LIBS_REPO: ${{ vars.GAME_LIBS_REPO || 'MeidoPromotionAssociation/CRC3D3.GameLibs' }}
+          GAME_LIBS_VERSION: ${{ vars.GAME_LIBS_VERSION }}
+        run: bash .github/scripts/fetch_game_libs.sh
+
+      - name: Build
+        run: >
+          dotnet build CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin.csproj
+          -c Release
+
+      # 顺手打一次包，PR 上就能看出发布包是不是还能正常组装
+      # Package as well, so a PR already shows whether the release archive still assembles
+      - name: Package Archive
+        run: |
+          VERSION="$(python3 .github/scripts/version.py)"
+          python3 .github/scripts/package.py \
+            --version "${VERSION}" \
+            --build-root CRC3D3.NotEnoughTranslator.Plugin/bin/Release \
+            --output-dir dist
+          ls -l dist/
+
+      - name: Upload Archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: CRC3D3.NotEnoughTranslator.Plugin
+          path: dist/*.zip
+          if-no-files-found: error

@@ -11,3 +11,5 @@ qodana.yaml
 /lib
 /CRC3D3.NotEnoughTranslator.Plugin/bin
 /CRC3D3.NotEnoughTranslator.Plugin/obj
+
+/dist

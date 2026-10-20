@@ -1,0 +1,12 @@
+# CI 脚本必须是 LF：Windows 上检出成 CRLF 后，Linux runner 里的 bash 会把行尾的 \r
+# 当成命令的一部分（set: -o: invalid option 之类），脚本直接跑不起来。
+# CI scripts must stay LF: checked out as CRLF on Windows, bash on the Linux runner would
+# treat the trailing \r as part of each command and the script would fail outright.
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
