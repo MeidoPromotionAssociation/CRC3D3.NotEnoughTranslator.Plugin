@@ -9,7 +9,7 @@ This document describes the current foundation for plugin development and integr
 | Module | Implemented | Not yet connected or verified |
 | --- | --- | --- |
 | UI / I2 | CSV loading, central query hook, parameter and AdvancedFormat processing, forced refresh | In-game UI coverage and font adaptation |
-| General text | JSONL loading, exact matching, regex replacement, secondary translation of captures, query API | Specific TMP / uGUI / script display hooks |
+| General text | JSONL loading, exact matching, regex replacement, secondary translation of captures, query API, system-message queue display hook | Other TMP / uGUI / script display hooks |
 | Texture replacement | PNG / JPG / JPEG indexing, reading data by texture name, reload and unload | Game resource-loading and UI image replacement hooks |
 
 This is a foundation, not a claim of complete game text or image coverage. Each module can be enabled or disabled independently.
@@ -51,7 +51,7 @@ Text: JSONL / ZIP
   -> AsyncTranslationLoader
   -> TextTranslations / TextRegexTranslations
   -> TextTranslateManager
-  -> Text display hooks (not yet connected)
+  -> TextTranslatePatch (system-message queue)
 
 Images under Texture
   -> TextureReplacementCatalog path index
@@ -95,7 +95,7 @@ When UI translation is enabled, `UITranslateManager.Init` installs both the I2 t
 
 If the game has no original translation for a term, a null I2 result merely leaves the component's current text unchanged; it does not guarantee restoration of an earlier value.
 
-The general text and texture modules currently affect subsequent queries only. Refreshing existing display objects must be implemented alongside their specific display hooks.
+General text already replaces display values at the system-message queue entry: after a reload, newly queued messages use the new dictionary while queued or already shown messages are not refreshed retroactively. The remaining text entries and the texture module currently affect subsequent queries only. Refreshing existing display objects must be implemented alongside their specific display hooks.
 
 ### Harmony Patch IDs
 
@@ -105,9 +105,12 @@ Following JAT, each patch class declares an explicit, stable, lowercase `Harmony
 | --- | --- |
 | `UITextTranslatePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.uitexttranslatepatch` |
 | `LocalizationReadyPatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.localizationreadypatch` |
+| `TextTranslatePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.text.texttranslatepatch` |
 | `XUATInterop` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.utils.xuatinterop` |
 
 These are Harmony owner IDs, not the BepInEx plugin GUID; the plugin GUID remains unchanged. Future patch classes should declare their own IDs rather than reuse a module-level shorthand.
+
+Both translation patches follow JAT's layout: the methods in `UITextTranslatePatch` / `TextTranslatePatch` only carry `[HarmonyPatch]` / `[HarmonyPrefix]` attributes, and the owning manager creates one Harmony instance and installs them all with `PatchAll`, rolling back with `UnpatchSelf` on failure. Adding an entry means adding one annotated method to that class; the installation code stays unchanged. `UITextTranslatePatch` targets a method with an `out string` parameter that cannot appear in an attribute argument, so it resolves the target through `[HarmonyTargetMethod]` with the full signature; a signature mismatch throws and disables the UI module. `LocalizationReadyPatch` keeps its own `Install` / `Uninstall` because it makes a runtime decision (nothing to await once localization has completed).
 
 ## 6. Integration APIs
 
@@ -117,7 +120,7 @@ These are Harmony owner IDs, not the BepInEx plugin GUID; the plugin GUID remain
 | `TextTranslateManager` | `TryGetTranslation(sourceText, out translation)` | Exact matching first, then regex rules |
 | `TextureReplaceManager` | `TryGetReplacement(textureName, out data)` | Encoded replacement-image bytes |
 
-All three expose `IsLoaded`, `IsLoading`, and `EntryCount`. The text module also exposes `ExactCount` / `RegexCount`; the UI module exposes `IsHookInstalled`.
+All three expose `IsLoaded`, `IsLoading`, and `EntryCount`. The text module also exposes `ExactCount` / `RegexCount` / `IsHookInstalled`; the UI module exposes `IsHookInstalled`.
 
 ### Dump Infrastructure
 
@@ -131,7 +134,7 @@ All three expose `IsLoaded`, `IsLoading`, and `EntryCount`. The text module also
 | `DumpManager.DumpTexture(textureName, pngData)` | Write an original PNG using the replacement catalog's filename key, without overwriting existing files |
 | `DumpManager.Flush()` | Flush both text buffers and report whether all writes succeeded |
 
-The I2 query hook forwards missing text terms without modifying native results. General text's normal query API dumps misses only after loading; `IsInTranslationDictionary` remains a side-effect-free probe. Initial loading does not dump the entire pending dictionary as missing. General text display hooks and texture capture/PNG encoding still need game integration.
+The I2 query hook forwards missing text terms without modifying native results. General text's normal query API dumps misses only after loading; `IsInTranslationDictionary` remains a side-effect-free probe. Initial loading does not dump the entire pending dictionary as missing. General text display hooks currently cover only the system-message queue; the remaining display entries, texture capture, and PNG encoding still need game integration.
 
 Text-write failures retain buffers and attempt to restore the previous file length. PNG output uses a temporary file and a non-overwriting move. Dump deduplication survives resource reloads and is separate from XUAT's translated-output registry; it is not a translation-query cache. Switches, thresholds, and flush triggers are documented in the [resource guide](TranslationGuide.md).
 
@@ -157,7 +160,7 @@ Decision order:
 2. If general text display hooks have taken control and the input has an exact or regex translation, also return `false` and leave it to NET.
 3. Otherwise preserve XUAT's original decision. Exceptions in NET's decision logic also preserve original behavior rather than blocking every string.
 
-**Step 2 is currently disabled by default.** General text has no actual display hooks yet; loading a dictionary does not guarantee that NET will assign text to a component. Future integration code must call `TextTranslateManager.SetDisplayHooksInstalled(true)` after installing its display hooks successfully, and pass `false` when removing them. Module unloading also resets this state. It is not a translation-pack setting.
+**Step 2 takes effect only after display hooks are actually installed.** `TextTranslateManager.Init` calls `SetDisplayHooksInstalled` with the result of `TextTranslatePatch.Install()`, and removing the patches or unloading the module resets it to false. It is not a translation-pack setting. One patch class covers several entries and currently hooks only the system-message queue, so this interception means dictionary sources are no longer handed to XUAT, while its coverage stays limited to integrated entries.
 
 Translation recording and query APIs:
 
@@ -177,6 +180,7 @@ See [XUATInterop.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Utils/XUATInterop.c
 ## 8. Future Integration Requirements
 
 - General text hooks must replace display values only, without modifying names that double as business keys, CSV data, or game state.
+- New general-text display entries belong in `Hooks/Text/TextTranslatePatch.cs` and reuse its Harmony ID and `Translate` helper: adding one `[HarmonyPatch]` method is enough for `PatchAll` to pick it up, without creating one patch class per entry.
 - Isolate I2 call context to avoid translating an I2-produced display value a second time.
 - Do not permanently exclude a component merely because it has `Localize`; the game can still assign text to that same component directly.
 - Texture integration must create and manage `Texture` / `Sprite` objects on Unity's main thread, with clear ownership of original and replacement resources.

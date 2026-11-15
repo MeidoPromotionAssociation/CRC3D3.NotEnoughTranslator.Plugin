@@ -4,7 +4,7 @@
 
 This document covers NET's resource directories, formats, matching rules, and reloading. See [module architecture](ModuleArchitecture.md) for implementation status and development APIs.
 
-**Current status: foundation stage.** UI has an I2 query hook; general text and textures are not yet connected to specific game display hooks. Successfully loading resources does not mean translations or replacement images are already displayed in the game.
+**Current status: foundation stage.** UI has an I2 query hook; general text is connected to the system-message queue entry, while the remaining text entries and textures are not yet connected to specific game display hooks. Successfully loading resources does not mean translations or replacement images are already displayed in the game.
 
 ## 1. Resource Directories
 
@@ -367,14 +367,14 @@ Place PNG / JPG / JPEG files in `Texture` or its subdirectories.
 - The previous resource snapshot remains available during loading. File-reading failures retain it; successfully reading an empty directory clears old resources.
 - Individual malformed JSONL entries are skipped as described earlier, rather than treated as a failure to read the entire batch.
 
-UI reloading forces an I2 refresh. General text and textures currently affect subsequent queries only. If the game has no original translation for a term, a null I2 result does not guarantee restoration of an earlier component text value.
+UI reloading forces an I2 refresh. After a general-text reload, newly queued system messages use the new dictionary, while queued or already shown messages are not refreshed retroactively; textures and the remaining text entries affect subsequent queries only. If the game has no original translation for a term, a null I2 result does not guarantee restoration of an earlier component text value.
 
 ### Dumping Untranslated Resources
 
 The plugin creates `Dump/UI/Text`, `Dump/Text`, and `Dump/Texture` at startup. Dumping is opt-in through the `6Dump` section; all three dump switches are disabled by default.
 
 - `EnableTermDump`: after the first UI snapshot is published, untranslated text-term queries produce CSV records with `Term,Original,Translation`. `Original` is the game's returned display text and `Translation` starts empty. Non-text terms and explicit-language queries are excluded. The UI module must remain enabled; triggering a resource reload can capture another localization pass for currently displayed UI.
-- `EnableTextDump`: misses from the loaded general-text query API produce JSONL records such as `{"original":"source text","text":""}`. Dictionary-only probes do not dump. Actual game-text capture still depends on the pending display hooks.
+- `EnableTextDump`: misses from the loaded general-text query API produce JSONL records such as `{"original":"source text","text":""}`. Dictionary-only probes do not dump. Game-text capture currently covers only the system-message queue; the remaining entries still depend on display hooks to be integrated.
 - `EnableTexturesDump`: allows `DumpManager.DumpTexture(textureName, pngData)` to write captured original PNG data. The interface does not enumerate game textures, read GPU data, or implement capture hooks. Existing files are not overwritten, and incomplete temporary writes are not published as PNG files.
 - UI terms and general text are deduplicated separately with Ordinal matching for the plugin session. Hot reloads do not reset these records. CSV quoting and JSON escaping preserve commas, quotes, backslashes, and line breaks; there is no normalized TXT copy.
 - `TermDumpThreshold` and `TextDumpThreshold` each default to `100`. Reaching a threshold, pressing the optional `FlushDump` shortcut, changing dump settings, reloading resources, or shutting down the plugin flushes buffered records. There is no periodic or per-frame flush. Failed writes retain their buffers for a later explicit retry; a process crash can still lose unwritten records.
@@ -392,7 +392,7 @@ NET can coexist with XUnity.AutoTranslator through JAT-style `IsTranslatable` de
 - `EnableXUATInterop/启用 XUAT 互操作` in `2General` is enabled by default. Without XUAT, integration is skipped; XUAT is not a required dependency.
 - UI / general text translations actually returned and recorded by NET are excluded from XUAT's translation decisions. Dynamic regex results can be recorded too, not just static dictionary values.
 - Exact and regex queries determine whether NET can translate an original string, but XUAT is prevented from taking it only after general text display hooks have actually taken control.
-- **General text is still a query foundation without actual display hooks, so original strings are currently left to XUAT by default.** Interop does not make JSONL translations appear by itself or interfere with XUAT's normal handling of text not taken over by NET.
+- **Once general-text display hooks are installed, dictionary sources are no longer handed to XUAT.** This interception is enabled together with the system-message queue entry; when the entry is missing or installation fails, XUAT keeps its default behavior. Interop does not make JSONL translations appear by itself.
 - XUAT translation callbacks are not used as a replacement for display hooks. NET does not change XUAT's language, translation files, or marker settings.
 - Successful resource reloads or module unloading clear that module's translation records. Existing components still follow the refresh limitations described earlier; recording text does not itself refresh the display.
 

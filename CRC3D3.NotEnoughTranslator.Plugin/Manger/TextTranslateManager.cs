@@ -1,8 +1,10 @@
 using System;
+using CRC3D3.NotEnoughTranslator.Plugin.Hooks.Text;
 using CRC3D3.NotEnoughTranslator.Plugin.Loader;
 using CRC3D3.NotEnoughTranslator.Plugin.Loader.Processor;
 using CRC3D3.NotEnoughTranslator.Plugin.Translation;
 using CRC3D3.NotEnoughTranslator.Plugin.Utils;
+using HarmonyLib;
 
 namespace CRC3D3.NotEnoughTranslator.Plugin.Manger;
 
@@ -12,27 +14,61 @@ public static class TextTranslateManager
     private static ResourceModule<TranslationLoadResult> _module;
     private static volatile TranslationCatalog _catalog = TranslationCatalog.Empty;
     private static volatile bool _displayHooksInstalled;
+    private static Harmony _displayHarmony;
 
     public static bool IsLoaded => _module?.IsLoaded == true;
     public static bool IsLoading => _module?.IsLoading == true;
+    public static bool IsHookInstalled => _displayHarmony != null;
     public static int ExactCount => _catalog.ExactCount;
     public static int RegexCount => _catalog.RegexCount;
     public static int EntryCount => ExactCount + RegexCount;
     public static bool AreDisplayHooksInstalled => _displayHooksInstalled;
 
     /// <summary>
-    /// 在 Unity 主线程初始化通用文本模块，并从 Text 异步加载 JSONL 精确与正则译文。
-    /// Initialize the general-text module on Unity's main thread and load JSONL exact and regex translations asynchronously from Text.
+    /// 在 Unity 主线程初始化通用文本模块，一次性挂接全部显示入口，并从 Text 异步加载 JSONL 精确与正则译文。
+    /// Initialize the general-text module on Unity's main thread, patch every display entry in one pass, and load JSONL exact and regex translations asynchronously from Text.
     /// </summary>
     public static void Init()
     {
         if (_module != null || !NotEnoughTranslator.EnableTextTranslation.Value) return;
+        SetDisplayHooksInstalled(InstallDisplayHooks());
         _module = new ResourceModule<TranslationLoadResult>("Text", token =>
             AsyncTranslationLoader.LoadOnceAsync("Text", NotEnoughTranslator.TranslationTextPath,
                 NotEnoughTranslator.AllowFilesInZipLoadInOrder.Value, token,
                 new JsonlTranslationFileProcessor(TimeSpan.FromMilliseconds(
                     NotEnoughTranslator.RegexTimeoutMilliseconds.Value))), ApplyResult);
         _module.Reload();
+    }
+
+    /// <summary>
+    /// 用一个 Harmony 实例安装 <see cref="TextTranslatePatch"/> 中带 HarmonyPatch 特性的全部入口，失败时回滚并保持仅查询。
+    /// Install every HarmonyPatch entry declared in <see cref="TextTranslatePatch"/> with one Harmony instance, rolling back on failure and staying query-only.
+    /// </summary>
+    /// <returns>全部入口安装成功时为 true，否则为 false / True when every entry was patched; otherwise false.</returns>
+    private static bool InstallDisplayHooks()
+    {
+        var harmony = new Harmony(TextTranslatePatch.HarmonyId);
+        try
+        {
+            harmony.PatchAll(typeof(TextTranslatePatch));
+            _displayHarmony = harmony;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                harmony.UnpatchSelf();
+            }
+            catch (Exception cleanupException)
+            {
+                LogManager.Warning($"[Text] Cannot roll back display hooks/无法回滚显示补丁: {cleanupException.Message}");
+            }
+
+            _displayHarmony = null;
+            LogManager.Warning($"[Text] Cannot install display hooks; general text stays query-only/无法安装显示补丁，通用文本仍仅提供查询: {exception.Message}");
+            return false;
+        }
     }
 
     /// <summary>
@@ -110,11 +146,13 @@ public static class TextTranslateManager
     }
 
     /// <summary>
-    /// 取消加载，清空通用文本资源及译文登记，并重置显示 Hook 状态。
-    /// Cancel loading, clear general-text resources and recorded outputs, and reset display-hook state.
+    /// 移除显示补丁，取消加载，清空通用文本资源及译文登记，并重置显示 Hook 状态。
+    /// Remove display patches, cancel loading, clear general-text resources and recorded outputs, and reset display-hook state.
     /// </summary>
     public static void Unload()
     {
+        _displayHarmony?.UnpatchSelf();
+        _displayHarmony = null;
         _module?.Dispose();
         _module = null;
         _catalog = TranslationCatalog.Empty;
