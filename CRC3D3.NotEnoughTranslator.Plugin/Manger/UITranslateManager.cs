@@ -29,7 +29,18 @@ public static class UITranslateManager
     public static void Init()
     {
         if (_module != null || !NotEnoughTranslator.EnableUITranslation.Value) return;
-        if (!InstallTextHooks()) return;
+        try
+        {
+            _textHarmony = Harmony.CreateAndPatchAll(typeof(UITextTranslatePatch), UITextTranslatePatch.HarmonyId);
+        }
+        catch (Exception exception)
+        {
+            new Harmony(UITextTranslatePatch.HarmonyId).UnpatchSelf();
+            _textHarmony = null;
+            LogManager.Error($"[UI] Cannot install I2 hook/无法安装 I2 补丁: {exception.Message}");
+            return;
+        }
+
         LocalizationReadyPatch.Install();
 
         _module = new ResourceModule<TranslationLoadResult>("UI", token =>
@@ -37,37 +48,6 @@ public static class UITranslateManager
                 NotEnoughTranslator.AllowFilesInZipLoadInOrder.Value, token,
                 new CsvTranslationFileProcessor()), ApplyResult);
         _module.Reload();
-    }
-
-    /// <summary>
-    /// 用一个 Harmony 实例安装 <see cref="UITextTranslatePatch"/> 中的全部 I2 查询补丁，失败时回滚并停用 UI 模块。
-    /// Install every I2 query patch declared in <see cref="UITextTranslatePatch"/> with one Harmony instance, rolling back and disabling the UI module on failure.
-    /// </summary>
-    /// <returns>全部补丁安装成功时为 true，否则为 false / True when every patch was applied; otherwise false.</returns>
-    private static bool InstallTextHooks()
-    {
-        var harmony = new Harmony(UITextTranslatePatch.HarmonyId);
-        try
-        {
-            harmony.PatchAll(typeof(UITextTranslatePatch));
-            _textHarmony = harmony;
-            return true;
-        }
-        catch (Exception exception)
-        {
-            try
-            {
-                harmony.UnpatchSelf();
-            }
-            catch (Exception cleanupException)
-            {
-                LogManager.Warning($"[UI] Cannot roll back I2 hooks/无法回滚 I2 补丁: {cleanupException.Message}");
-            }
-
-            _textHarmony = null;
-            LogManager.Error($"[UI] Cannot install I2 hook/无法安装 I2 补丁: {exception.Message}");
-            return false;
-        }
     }
 
     /// <summary>

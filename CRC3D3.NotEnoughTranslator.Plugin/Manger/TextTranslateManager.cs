@@ -31,44 +31,24 @@ public static class TextTranslateManager
     public static void Init()
     {
         if (_module != null || !NotEnoughTranslator.EnableTextTranslation.Value) return;
-        SetDisplayHooksInstalled(InstallDisplayHooks());
+        try
+        {
+            _displayHarmony = Harmony.CreateAndPatchAll(typeof(TextTranslatePatch), TextTranslatePatch.HarmonyId);
+        }
+        catch (Exception exception)
+        {
+            new Harmony(TextTranslatePatch.HarmonyId).UnpatchSelf();
+            _displayHarmony = null;
+            LogManager.Warning($"[Text] Cannot install display hooks; general text stays query-only/无法安装显示补丁，通用文本仍仅提供查询: {exception.Message}");
+        }
+
+        SetDisplayHooksInstalled(_displayHarmony != null);
         _module = new ResourceModule<TranslationLoadResult>("Text", token =>
             AsyncTranslationLoader.LoadOnceAsync("Text", NotEnoughTranslator.TranslationTextPath,
                 NotEnoughTranslator.AllowFilesInZipLoadInOrder.Value, token,
                 new JsonlTranslationFileProcessor(TimeSpan.FromMilliseconds(
                     NotEnoughTranslator.RegexTimeoutMilliseconds.Value))), ApplyResult);
         _module.Reload();
-    }
-
-    /// <summary>
-    /// 用一个 Harmony 实例安装 <see cref="TextTranslatePatch"/> 中带 HarmonyPatch 特性的全部入口，失败时回滚并保持仅查询。
-    /// Install every HarmonyPatch entry declared in <see cref="TextTranslatePatch"/> with one Harmony instance, rolling back on failure and staying query-only.
-    /// </summary>
-    /// <returns>全部入口安装成功时为 true，否则为 false / True when every entry was patched; otherwise false.</returns>
-    private static bool InstallDisplayHooks()
-    {
-        var harmony = new Harmony(TextTranslatePatch.HarmonyId);
-        try
-        {
-            harmony.PatchAll(typeof(TextTranslatePatch));
-            _displayHarmony = harmony;
-            return true;
-        }
-        catch (Exception exception)
-        {
-            try
-            {
-                harmony.UnpatchSelf();
-            }
-            catch (Exception cleanupException)
-            {
-                LogManager.Warning($"[Text] Cannot roll back display hooks/无法回滚显示补丁: {cleanupException.Message}");
-            }
-
-            _displayHarmony = null;
-            LogManager.Warning($"[Text] Cannot install display hooks; general text stays query-only/无法安装显示补丁，通用文本仍仅提供查询: {exception.Message}");
-            return false;
-        }
     }
 
     /// <summary>

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Function: 把指定游戏版本的三个程序集拉进 lib/ / Download the game assemblies into lib/
+# Function: 把指定游戏版本的程序集拉进 lib/ / Download the game assemblies into lib/
 #
-# 本插件编译期需要 CRC 自带的三个程序集，它们不能提交进公开仓库，也不在公共 NuGet 源上
+# 本插件编译期需要 CRC 自带的程序集，它们不能提交进公开仓库，也不在公共 NuGet 源上
 # （COM3D2.HighHeel 靠公开的 COM3D2.GameLibs 包，CRC3D3 还没有对应的包），
 # 所以从私有仓库按游戏版本分目录下载：
 #
 #   https://github.com/MeidoPromotionAssociation/CRC3D3.GameLibs
-#     ├── 2.49.2/   I2.Localization.dll, Assembly-CSharp.dll, Assembly-CSharp-firstpass.dll
+#     ├── 1.0.1/   I2.Localization.dll, Assembly-CSharp.dll, Assembly-CSharp-firstpass.dll, WfSystem.FileSystem.dll, UnityEngine.UI.dll
 #     └── demo2/    ...
 #
 # 切换游戏版本只需要改下面 DEFAULT_VERSION 这一行，或者用仓库变量 GAME_LIBS_VERSION 覆盖
 # （变量优先级更高，不想改代码时用变量）。
 #
-# The plugin needs three assemblies shipped with the game. They must not be committed to
+# The plugin needs five assemblies shipped with the game. They must not be committed to
 # this public repository and are on no public NuGet feed (COM3D2.HighHeel relies on the
 # public COM3D2.GameLibs package, which has no CRC3D3 counterpart), so they are downloaded
 # from a private repository that stores one directory per game version. Switch the game
@@ -35,16 +35,18 @@ FILES=(
   "I2.Localization.dll"
   "Assembly-CSharp.dll"
   "Assembly-CSharp-firstpass.dll"
+  "WfSystem.FileSystem.dll"
+  "UnityEngine.UI.dll"
 )
 
 if [ -z "${VERSION}" ]; then
-  echo "::error::游戏版本为空，请设置 DEFAULT_VERSION 或仓库变量 GAME_LIBS_VERSION / game version is empty"
+  echo "::error::The game version is empty. Please set DEFAULT_VERSION or the repository variable GAME_LIBS_VERSION."
   exit 1
 fi
 
 if [ -z "${GH_TOKEN:-}" ]; then
-  echo "::error::GAME_LIBS_TOKEN 未配置，无法从私有仓库 ${REPO} 拉取游戏程序集。/ GAME_LIBS_TOKEN is not set."
-  echo "::error::请在仓库 Settings → Secrets and variables → Actions 里添加 GAME_LIBS_TOKEN（对该私有仓库有 contents:read 权限的 PAT）。"
+  echo "::error::GAME_LIBS_TOKEN is not configured, and the game assembly cannot be pulled from the private repository ${REPO}."
+  echo "::error::Please add GAME_LIBS_TOKEN (a PAT with contents:read permission for this private repository) in Settings → Secrets and variables → Actions."
   exit 1
 fi
 
@@ -56,7 +58,7 @@ for name in "${FILES[@]}"; do
   if ! gh api "repos/${REPO}/contents/${VERSION}/${name}?ref=${REF}" \
       -H "Accept: application/vnd.github.raw" > "${DEST_DIR}/${name}"; then
     echo "::error::failed to download ${VERSION}/${name} from ${REPO}@${REF}"
-    echo "::error::确认私有仓库里有 ${VERSION}/ 这个目录、三个 dll 齐全，且 GAME_LIBS_TOKEN 有读权限。/ Check the directory, the three files and the token scope."
+    echo "::error::Confirm that the private repository contains the directory ${VERSION}/, all five DLLs are present, and that GAME_LIBS_TOKEN has read permissions."
     exit 1
   fi
 
@@ -66,7 +68,7 @@ for name in "${FILES[@]}"; do
   size="$(wc -c < "${DEST_DIR}/${name}")"
   magic="$(head -c 2 "${DEST_DIR}/${name}" || true)"
   if [ "${size}" -lt 1024 ] || [ "${magic}" != "MZ" ]; then
-    echo "::error::${DEST_DIR}/${name} 不像一个 .NET 程序集（${size} 字节，头 ${magic}）/ not a .NET assembly"
+    echo "::error::${DEST_DIR}/${name} does not resemble a .NET assembly (${size} bytes, header ${magic})."
     exit 1
   fi
   echo "  ok, ${size} bytes"

@@ -4,7 +4,7 @@
 
 This document covers NET's resource directories, formats, matching rules, and reloading. See [module architecture](ModuleArchitecture.md) for implementation status and development APIs.
 
-**Current status: foundation stage.** UI has an I2 query hook; general text is connected to the system-message queue entry, while the remaining text entries and textures are not yet connected to specific game display hooks. Successfully loading resources does not mean translations or replacement images are already displayed in the game.
+**Current status: foundation stage.** UI has an I2 query hook; general text is connected to the system-message queue entry; texture replacement is connected to the sprite load entry. The remaining text entries are not yet connected to specific game display hooks. Successfully loading resources does not mean translations or replacement images are already displayed in the game.
 
 ## 1. Resource Directories
 
@@ -354,9 +354,12 @@ Place PNG / JPG / JPEG files in `Texture` or its subdirectories.
 - Matching is case-insensitive by filename, ignoring directories and `.tex` / `.png` / `.jpg` / `.jpeg` extensions.
 - For example, `button`, `button.tex`, and `button.png` can all query a replacement file named `button.png`.
 - A later file with the same name overrides an earlier one and produces a warning. Subdirectories do not create separate texture namespaces.
-- Only a path index is stored. Files are read when queried; image contents are not cached, and game textures are neither modified nor destroyed.
+- Only a path index is stored; files are read on a hit and image contents are not cached.
+- On a hit, `ImageConversion.LoadImage` replaces the texture pixels before `GameResource.LoadAsset<Sprite>` returns and whenever uGUI assigns `Image.sprite`, preserving the original sprite's pivot, borders, and reference counting. Each texture instance is processed once.
+- Prefab-serialized images never pass through the setter, so `MaskableGraphic.OnEnable` reassigns `sprite` once to trigger the replacement.
+- Sprites that are atlas sub-rects (`sprite.rect` smaller than the texture), non-`Texture2D` textures, and dimension mismatches are skipped or reported, so other atlas entries are never overwritten. Asynchronous loads (`LoadAssetAsync`) are not hooked yet.
 
-`TextureReplaceManager.TryGetReplacement(textureName, out byte[] data)` returns encoded image data, or `false` when no replacement is found. This API does not mean game replacement is already connected: resource hooks and Unity object management are still pending. See [module architecture](ModuleArchitecture.md).
+`TextureReplaceManager.TryGetReplacement(textureName, out byte[] data)` returns encoded image data, or `false` when no replacement is found; `HasReplacement` only queries the index. Replacement itself is applied by the sprite load hook described above. See [module architecture](ModuleArchitecture.md).
 
 ## 6. Module Switches and Reloading
 
@@ -367,7 +370,7 @@ Place PNG / JPG / JPEG files in `Texture` or its subdirectories.
 - The previous resource snapshot remains available during loading. File-reading failures retain it; successfully reading an empty directory clears old resources.
 - Individual malformed JSONL entries are skipped as described earlier, rather than treated as a failure to read the entire batch.
 
-UI reloading forces an I2 refresh. After a general-text reload, newly queued system messages use the new dictionary, while queued or already shown messages are not refreshed retroactively; textures and the remaining text entries affect subsequent queries only. If the game has no original translation for a term, a null I2 result does not guarantee restoration of an earlier component text value.
+UI reloading forces an I2 refresh. After a general-text reload, newly queued system messages use the new dictionary, while queued or already shown messages are not refreshed retroactively. Texture replacements apply the next time an asset loads and are not restored automatically; the remaining text entries affect subsequent queries only. If the game has no original translation for a term, a null I2 result does not guarantee restoration of an earlier component text value.
 
 ### Dumping Untranslated Resources
 
@@ -375,7 +378,7 @@ The plugin creates `Dump/UI/Text`, `Dump/Text`, and `Dump/Texture` at startup. D
 
 - `EnableTermDump`: after the first UI snapshot is published, untranslated text-term queries produce CSV records with `Term,Original,Translation`. `Original` is the game's returned display text and `Translation` starts empty. Non-text terms and explicit-language queries are excluded. The UI module must remain enabled; triggering a resource reload can capture another localization pass for currently displayed UI.
 - `EnableTextDump`: misses from the loaded general-text query API produce JSONL records such as `{"original":"source text","text":""}`. Dictionary-only probes do not dump. Game-text capture currently covers only the system-message queue; the remaining entries still depend on display hooks to be integrated.
-- `EnableTexturesDump`: allows `DumpManager.DumpTexture(textureName, pngData)` to write captured original PNG data. The interface does not enumerate game textures, read GPU data, or implement capture hooks. Existing files are not overwritten, and incomplete temporary writes are not published as PNG files.
+- `EnableTexturesDump`: when a sprite loads without a matching replacement, its original texture is encoded as PNG into `Dump/Texture` (unreadable textures are copied through a temporary RenderTexture first). Each name is attempted once per run; existing files are not overwritten, and incomplete temporary writes are not published as PNG files. This dumps only sprites that actually load, not the whole game.
 - UI terms and general text are deduplicated separately with Ordinal matching for the plugin session. Hot reloads do not reset these records. CSV quoting and JSON escaping preserve commas, quotes, backslashes, and line breaks; there is no normalized TXT copy.
 - `TermDumpThreshold` and `TextDumpThreshold` each default to `100`. Reaching a threshold, pressing the optional `FlushDump` shortcut, changing dump settings, reloading resources, or shutting down the plugin flushes buffered records. There is no periodic or per-frame flush. Failed writes retain their buffers for a later explicit retry; a process crash can still lose unwritten records.
 

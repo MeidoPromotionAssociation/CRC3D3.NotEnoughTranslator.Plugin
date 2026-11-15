@@ -6,7 +6,7 @@
 
 NotEnoughTranslator (NET) is a BepInEx 5 translation plugin for CRC3D3.
 
-**Status:** foundation stage. The I2 query hook is implemented, and general text is connected to the system-message queue entry. The remaining general-text entries and texture replacement currently provide resource loading and query APIs only. Translation data is not included.
+**Status:** foundation stage. The I2 query hook is implemented, general text is connected to the system-message queue entry, and texture replacement is connected to the sprite load entry. The remaining general-text entries are not hooked yet. Translation data is not included.
 
 NET keeps the game's language state unchanged. It does not add languages or provide JAT-style translation-language selection.
 
@@ -21,7 +21,7 @@ Optional XUAT interop uses JAT-style translation decisions, without adding or de
 
 ### Building
 
-Target: .NET Framework 4.8 / Unity 2022.3 / BepInEx 5. The build needs three assemblies shipped with CRC3D3, placed in `lib` at the repository root: `I2.Localization.dll`, `Assembly-CSharp.dll`, `Assembly-CSharp-firstpass.dll`.
+Target: .NET Framework 4.8 / Unity 2022.3 / BepInEx 5. The build needs five assemblies shipped with CRC3D3, placed in `lib` at the repository root: `I2.Localization.dll`, `Assembly-CSharp.dll`, `Assembly-CSharp-firstpass.dll`, `WfSystem.FileSystem.dll`, `UnityEngine.UI.dll`.
 
 ```
 dotnet build CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin.csproj -c Release
@@ -42,7 +42,7 @@ The `Release` workflow then builds, packages `CRC3D3.NotEnoughTranslator.Plugin-
 
 NotEnoughTranslator（NET）是 CRC3D3 的 BepInEx 5 翻译插件。
 
-**当前状态：基础骨架阶段。** 已实现 I2 查询 Hook；通用文本已挂接系统消息队列入口，其余文本入口和纹理替换目前仅提供资源加载与查询接口。本插件不附带翻译数据。
+**当前状态：基础骨架阶段。** 已实现 I2 查询 Hook；通用文本已挂接系统消息队列入口；纹理替换已挂在精灵资源加载入口。其余文本入口尚未接入。本插件不附带翻译数据。
 
 NET 保持游戏原有语言状态，不新增语言，也不提供 JAT 式的译文语言选择。
 
@@ -57,7 +57,7 @@ NET 保持游戏原有语言状态，不新增语言，也不提供 JAT 式的�
 
 ### 构建
 
-目标环境：.NET Framework 4.8 / Unity 2022.3 / BepInEx 5。编译需要 CRC3D3 自带的三个程序集，放在仓库根目录的 `lib` 下：`I2.Localization.dll`、`Assembly-CSharp.dll`、`Assembly-CSharp-firstpass.dll`。
+目标环境：.NET Framework 4.8 / Unity 2022.3 / BepInEx 5。编译需要 CRC3D3 自带的五个程序集，放在仓库根目录的 `lib` 下：`I2.Localization.dll`、`Assembly-CSharp.dll`、`Assembly-CSharp-firstpass.dll`、`WfSystem.FileSystem.dll`、`UnityEngine.UI.dll`。
 
 ```
 dotnet build CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin.csproj -c Release

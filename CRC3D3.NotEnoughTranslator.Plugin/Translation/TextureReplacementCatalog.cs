@@ -55,6 +55,17 @@ internal sealed class TextureReplacementCatalog
     }
 
     /// <summary>
+    /// 检查是否存在该名称的替换图片，只查询索引而不读取文件。
+    /// Check whether a replacement exists for the name, querying the index without reading the file.
+    /// </summary>
+    /// <param name="textureName">纹理名称或包含文件扩展名的路径 / The texture name or path, optionally including a file extension.</param>
+    /// <returns>索引中存在该名称时为 true / True when the name exists in the index.</returns>
+    public bool Contains(string textureName)
+    {
+        return !string.IsNullOrWhiteSpace(textureName) && _paths.ContainsKey(GetKey(textureName));
+    }
+
+    /// <summary>
     /// 按规范化纹理键查找并读取图片字节，读取失败时不返回替换数据。
     /// Resolve a normalized texture key and read image bytes, returning no replacement data on failure.
     /// </summary>

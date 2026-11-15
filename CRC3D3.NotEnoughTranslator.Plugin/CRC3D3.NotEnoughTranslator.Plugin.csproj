@@ -26,8 +26,6 @@
     <Version Condition="'$(PluginVersionFromSource)' != ''">$(PluginVersionFromSource)</Version>
   </PropertyGroup>
 
-  <!-- net48 的引用程序集（CI 上没有装 .NET Framework，靠这个包补）
-       Reference assemblies for the .NET Framework target, needed on Linux CI -->
   <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" Version="1.0.3"/>
   </ItemGroup>
@@ -53,6 +51,14 @@
       <HintPath>../lib/Assembly-CSharp-firstpass.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="WfSystem.FileSystem">
+      <HintPath>../lib/WfSystem.FileSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>../lib/UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     
   </ItemGroup>
   
@@ -63,11 +69,9 @@
     <Description>https://github.com/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin</Description> <!-- For BepInEx.ConfigurationManager -->
     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
   </PropertyGroup>
-  <!-- 常量读不出来时给出可读报错，而不是悄悄编出 1.0.0.0
-       Fail loudly when the constant cannot be read instead of silently building 1.0.0.0 -->
   <Target Name="CheckPluginVersion" BeforeTargets="BeforeBuild"
           Condition="'$(PluginVersionFromSource)' == ''">
-    <Error Text="无法从 CRC3D3.NotEnoughTranslator.Plugin.cs 的 PluginVersion 常量读取版本号，请检查它是否形如 public const string PluginVersion = &quot;0.0.1&quot;。" />
+    <Error Text="Unable to read version number from the PluginVersion constant in CRC3D3.NotEnoughTranslator.Plugin.cs. Please check if it is of the form public const string PluginVersion = &quot;0.0.1&quot;。" />
   </Target>
 
 </Project>

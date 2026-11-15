@@ -10,7 +10,7 @@ This document describes the current foundation for plugin development and integr
 | --- | --- | --- |
 | UI / I2 | CSV loading, central query hook, parameter and AdvancedFormat processing, forced refresh | In-game UI coverage and font adaptation |
 | General text | JSONL loading, exact matching, regex replacement, secondary translation of captures, query API, system-message queue display hook | Other TMP / uGUI / script display hooks |
-| Texture replacement | PNG / JPG / JPEG indexing, reading data by texture name, reload and unload | Game resource-loading and UI image replacement hooks |
+| Texture replacement | PNG / JPG / JPEG indexing, reading data by texture name, in-place replacement at the sprite load entry and on uGUI image assignment, original dumps on a miss, reload and unload | Atlas sub-rects, non-Texture2D textures, and asynchronous load paths |
 
 This is a foundation, not a claim of complete game text or image coverage. Each module can be enabled or disabled independently.
 
@@ -56,7 +56,7 @@ Text: JSONL / ZIP
 Images under Texture
   -> TextureReplacementCatalog path index
   -> TextureReplaceManager
-  -> Resource or image display hooks (not yet connected)
+  -> TextureReplacePatch (GameResource.LoadAsset<Sprite> / Image.sprite)
 ```
 
 The two text modules share loading infrastructure, but keep their resource channels and consumers separate. `TranslationCatalog` handles exact and regex queries; `ResourceModule<T>` manages loading tasks and publishes results on the main thread.
@@ -95,7 +95,7 @@ When UI translation is enabled, `UITranslateManager.Init` installs both the I2 t
 
 If the game has no original translation for a term, a null I2 result merely leaves the component's current text unchanged; it does not guarantee restoration of an earlier value.
 
-General text already replaces display values at the system-message queue entry: after a reload, newly queued messages use the new dictionary while queued or already shown messages are not refreshed retroactively. The remaining text entries and the texture module currently affect subsequent queries only. Refreshing existing display objects must be implemented alongside their specific display hooks.
+General text already replaces display values at the system-message queue entry: after a reload, newly queued messages use the new dictionary while queued or already shown messages are not refreshed retroactively. Texture replacements apply the next time an asset loads, and already replaced textures are not restored automatically; the remaining text entries currently affect subsequent queries only. Refreshing existing display objects must be implemented alongside their specific display hooks.
 
 ### Harmony Patch IDs
 
@@ -105,12 +105,13 @@ Following JAT, each patch class declares an explicit, stable, lowercase `Harmony
 | --- | --- |
 | `UITextTranslatePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.uitexttranslatepatch` |
 | `LocalizationReadyPatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.localizationreadypatch` |
+| `TextureReplacePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.texture.texturereplacepatch` |
 | `TextTranslatePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.text.texttranslatepatch` |
 | `XUATInterop` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.utils.xuatinterop` |
 
 These are Harmony owner IDs, not the BepInEx plugin GUID; the plugin GUID remains unchanged. Future patch classes should declare their own IDs rather than reuse a module-level shorthand.
 
-Both translation patches follow JAT's layout: the methods in `UITextTranslatePatch` / `TextTranslatePatch` only carry `[HarmonyPatch]` / `[HarmonyPrefix]` attributes, and the owning manager creates one Harmony instance and installs them all with `PatchAll`, rolling back with `UnpatchSelf` on failure. Adding an entry means adding one annotated method to that class; the installation code stays unchanged. `UITextTranslatePatch` targets a method with an `out string` parameter that cannot appear in an attribute argument, so it resolves the target through `[HarmonyTargetMethod]` with the full signature; a signature mismatch throws and disables the UI module. `LocalizationReadyPatch` keeps its own `Install` / `Uninstall` because it makes a runtime decision (nothing to await once localization has completed).
+All three patch classes follow JAT's layout: the methods in `UITextTranslatePatch` / `TextTranslatePatch` only carry `[HarmonyPatch]` / `[HarmonyPrefix]` attributes, and the owning manager installs them all with `Harmony.CreateAndPatchAll`, rolling back with `UnpatchSelf` on failure. Adding an entry means adding one annotated method to that class; the installation code stays unchanged. `UITextTranslatePatch` targets a method with an `out string` parameter that cannot appear in an attribute argument, so it resolves the target through `[HarmonyTargetMethod]` with the full signature; a signature mismatch throws and disables the UI module. `TextureReplacePatch` targets `GameResource.LoadAsset<Sprite>(string)`; the generic method is likewise built in `[HarmonyTargetMethod]`, and `WfSystem.FileSystem.dll` is a compile reference. `LocalizationReadyPatch` keeps its own `Install` / `Uninstall` because it makes a runtime decision (nothing to await once localization has completed).
 
 ## 6. Integration APIs
 
@@ -120,7 +121,7 @@ Both translation patches follow JAT's layout: the methods in `UITextTranslatePat
 | `TextTranslateManager` | `TryGetTranslation(sourceText, out translation)` | Exact matching first, then regex rules |
 | `TextureReplaceManager` | `TryGetReplacement(textureName, out data)` | Encoded replacement-image bytes |
 
-All three expose `IsLoaded`, `IsLoading`, and `EntryCount`. The text module also exposes `ExactCount` / `RegexCount` / `IsHookInstalled`; the UI module exposes `IsHookInstalled`.
+All three expose `IsLoaded`, `IsLoading`, `EntryCount`, and `IsHookInstalled`. The text module also exposes `ExactCount` / `RegexCount`; the texture module also exposes `HasReplacement`, which queries the index without reading files.
 
 ### Dump Infrastructure
 
@@ -131,10 +132,10 @@ All three expose `IsLoaded`, `IsLoading`, and `EntryCount`. The text module also
 | `UITranslateManager.DumpTerm(term, original)` | Export a missing I2 term after a snapshot is published, including during the first forced UI refresh |
 | `DumpManager.DumpTerm(term, original)` | Buffer a caller-confirmed untranslated term as a CSV template |
 | `DumpManager.DumpText(original)` | Buffer caller-confirmed untranslated general text as a JSONL template |
-| `DumpManager.DumpTexture(textureName, pngData)` | Write an original PNG using the replacement catalog's filename key, without overwriting existing files |
+| `DumpManager.DumpTexture(textureName, pngData)` | Write an original PNG using the replacement catalog's filename key, without overwriting existing files; called by the texture patch on a miss |
 | `DumpManager.Flush()` | Flush both text buffers and report whether all writes succeeded |
 
-The I2 query hook forwards missing text terms without modifying native results. General text's normal query API dumps misses only after loading; `IsInTranslationDictionary` remains a side-effect-free probe. Initial loading does not dump the entire pending dictionary as missing. General text display hooks currently cover only the system-message queue; the remaining display entries, texture capture, and PNG encoding still need game integration.
+The I2 query hook forwards missing text terms without modifying native results. General text's normal query API dumps misses only after loading; `IsInTranslationDictionary` remains a side-effect-free probe. Initial loading does not dump the entire pending dictionary as missing. General text display hooks currently cover only the system-message queue. The texture patch encodes and dumps the original image on a miss; the remaining display entries still need game integration.
 
 Text-write failures retain buffers and attempt to restore the previous file length. PNG output uses a temporary file and a non-overwriting move. Dump deduplication survives resource reloads and is separate from XUAT's translated-output registry; it is not a translation-query cache. Switches, thresholds, and flush triggers are documented in the [resource guide](TranslationGuide.md).
 
@@ -195,6 +196,8 @@ Place matching CRC versions of these assemblies in the repository-root `lib` dir
 - `I2.Localization.dll`
 - `Assembly-CSharp.dll`
 - `Assembly-CSharp-firstpass.dll`
+- `WfSystem.FileSystem.dll`
+- `UnityEngine.UI.dll`
 
 Run from the repository root:
 
