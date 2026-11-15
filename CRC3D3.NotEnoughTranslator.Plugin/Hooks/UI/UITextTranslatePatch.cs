@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using CRC3D3.NotEnoughTranslator.Plugin.Manger;
 using CRC3D3.NotEnoughTranslator.Plugin.Utils;
 using HarmonyLib;
@@ -8,6 +9,13 @@ using UnityEngine;
 
 namespace CRC3D3.NotEnoughTranslator.Plugin.Hooks.UI;
 
+/// <summary>
+/// I2 译文查询补丁集合：为未显式指定语言的查询返回 NET 译文。
+/// 由 <see cref="UITranslateManager"/> 通过 PatchAll 一次性安装。
+/// I2 translation-query patches that supply NET output for queries without an explicit language.
+/// Installed in one go by <see cref="UITranslateManager"/> through PatchAll.
+/// </summary>
+[HarmonyPatch]
 internal static class UITextTranslatePatch
 {
     /// <summary>
@@ -18,19 +26,17 @@ internal static class UITextTranslatePatch
         "github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.uitexttranslatepatch";
 
     private static readonly HashSet<string> FailedTerms = new(StringComparer.Ordinal);
-    private static Harmony _harmony;
     [ThreadStatic] private static int _explicitLanguageDepth;
 
-    public static bool IsInstalled => _harmony != null;
-
     /// <summary>
-    /// 安装 I2 查询前置、后置及异常清理补丁，不改变游戏语言。
-    /// Install I2 query prefixes, postfixes, and cleanup hooks without changing the game language.
+    /// 按完整签名定位 I2 查询方法；`out string` 参数无法写进特性构造参数，因此改用目标方法解析。
+    /// Resolve the I2 query method by its full signature; its `out string` parameter cannot appear in an attribute argument.
     /// </summary>
-    /// <returns>已安装或安装成功时为 true，否则为 false / True if already installed or successfully installed; otherwise false.</returns>
-    public static bool Install()
+    /// <returns>命中的查询方法 / The resolved query method.</returns>
+    /// <exception cref="MissingMethodException">签名不匹配时抛出，交给管理器回滚并停用 UI 模块 / Thrown on a signature mismatch so the manager can roll back and disable the UI module.</exception>
+    [HarmonyTargetMethod]
+    private static MethodBase TargetMethod()
     {
-        if (_harmony != null) return true;
         var target = AccessTools.Method(typeof(LocalizationManager), nameof(LocalizationManager.TryGetTranslation),
             new[]
             {
@@ -38,39 +44,8 @@ internal static class UITextTranslatePatch
                 typeof(bool), typeof(int), typeof(bool), typeof(bool), typeof(GameObject), typeof(string)
             });
 
-        if (target == null)
-        {
-            LogManager.Error("[UI] Unsupported I2 translation signature; UI module disabled/不支持的 I2 签名，UI 模块已停用");
-            return false;
-        }
-
-        var harmony = new Harmony(HarmonyId);
-        try
-        {
-            harmony.Patch(target,
-                prefix: new HarmonyMethod(typeof(UITextTranslatePatch), nameof(Prefix)),
-                postfix: new HarmonyMethod(typeof(UITextTranslatePatch), nameof(Postfix)),
-                finalizer: new HarmonyMethod(typeof(UITextTranslatePatch), nameof(Finalizer)));
-            _harmony = harmony;
-            return true;
-        }
-        catch (Exception exception)
-        {
-            harmony.UnpatchSelf();
-            LogManager.Error($"[UI] Cannot install I2 hook/无法安装 I2 补丁: {exception}");
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// 移除 I2 翻译补丁并清除告警去重记录。
-    /// Remove the I2 translation hooks and clear warning deduplication records.
-    /// </summary>
-    public static void Uninstall()
-    {
-        _harmony?.UnpatchSelf();
-        _harmony = null;
-        ClearWarnings();
+        return target ?? throw new MissingMethodException(
+            "[UI] Unsupported I2 translation signature; UI module disabled/不支持的 I2 签名，UI 模块已停用");
     }
 
     /// <summary>
@@ -88,6 +63,7 @@ internal static class UITextTranslatePatch
     /// </summary>
     /// <param name="overrideLanguage">显式指定的查询语言，null 表示未指定 / The explicit query language, or null if unspecified.</param>
     /// <param name="__state">本次调用是否增加了显式语言深度 / Whether this call increased the explicit-language depth.</param>
+    [HarmonyPrefix]
     private static void Prefix(string overrideLanguage, out bool __state)
     {
         __state = overrideLanguage != null;
@@ -101,6 +77,7 @@ internal static class UITextTranslatePatch
     /// <param name="__state">前置补丁记录的深度变更状态 / The depth-change state recorded by the prefix.</param>
     /// <param name="__exception">原查询的异常，成功时为 null / The original query exception, or null on success.</param>
     /// <returns>未经修改的原异常 / The original exception without modification.</returns>
+    [HarmonyFinalizer]
     private static Exception Finalizer(bool __state, Exception __exception)
     {
         if (__state) _explicitLanguageDepth--;
@@ -121,6 +98,7 @@ internal static class UITextTranslatePatch
     /// <param name="localParametersRoot">查找局部参数的对象根节点 / The root object used to resolve local parameters.</param>
     /// <param name="overrideLanguage">显式语言覆盖，非 null 时跳过 NET 翻译 / An explicit language override; non-null values bypass NET.</param>
     /// <param name="__result">I2 查询是否成功，返回 NET 译文时置为 true / I2 query success, set to true when NET supplies a translation.</param>
+    [HarmonyPostfix]
     private static void Postfix(string Term, Localize.AdvancedFormat advancedFormat,
         ref string Translation, bool FixForRTL, int maxLineLengthForRTL, bool ignoreRTLnumbers,
         bool applyParameters, GameObject localParametersRoot, string overrideLanguage, ref bool __result)
