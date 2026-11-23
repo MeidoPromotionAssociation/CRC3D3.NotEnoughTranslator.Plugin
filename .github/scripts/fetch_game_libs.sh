@@ -2,7 +2,6 @@
 # Function: 把指定游戏版本的程序集拉进 lib/ / Download the game assemblies into lib/
 #
 # 本插件编译期需要 CRC 自带的程序集，它们不能提交进公开仓库，也不在公共 NuGet 源上
-# （COM3D2.HighHeel 靠公开的 COM3D2.GameLibs 包，CRC3D3 还没有对应的包），
 # 所以从私有仓库按游戏版本分目录下载：
 #
 #   https://github.com/MeidoPromotionAssociation/CRC3D3.GameLibs
@@ -12,11 +11,11 @@
 # 切换游戏版本只需要改下面 DEFAULT_VERSION 这一行，或者用仓库变量 GAME_LIBS_VERSION 覆盖
 # （变量优先级更高，不想改代码时用变量）。
 #
-# The plugin needs five assemblies shipped with the game. They must not be committed to
-# this public repository and are on no public NuGet feed (COM3D2.HighHeel relies on the
-# public COM3D2.GameLibs package, which has no CRC3D3 counterpart), so they are downloaded
-# from a private repository that stores one directory per game version. Switch the game
-# version by editing DEFAULT_VERSION below, or override it with the GAME_LIBS_VERSION
+# The plugin needs few assemblies shipped with the game. They must not be committed to
+# this public repository and are on no public NuGet feed .So they are downloaded
+# from a private repository that stores one directory per game version. 
+#
+# Switch the game version by editing DEFAULT_VERSION below, or override it with the GAME_LIBS_VERSION
 # repository variable (the variable wins, so no commit is needed).
 
 set -euo pipefail
