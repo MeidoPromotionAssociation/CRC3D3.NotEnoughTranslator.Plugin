@@ -6,7 +6,7 @@
 
 NotEnoughTranslator (NET) is a BepInEx 5 translation plugin for CRC3D3.
 
-**Status:** foundation stage. The I2 query hook is implemented, general text is connected to the system-message queue entry, and texture replacement is connected to the sprite load entry. The remaining general-text entries are not hooked yet. Translation data is not included.
+NET hooks I2 queries, KAG dialogue and choices, TMP and uGUI text, and sprite loading. General-text translation packs can scope entries to a script location or a UI component. Translation data is supplied separately.
 
 NET keeps the game's language state unchanged. It does not add languages or provide JAT-style translation-language selection.
 
@@ -45,7 +45,7 @@ NotEnoughTranslator（NET）是 CRC3D3 的 BepInEx 5 翻译插件。
 
 本插件不附带翻译数据，请自行从别处获取。
 
-**当前状态：基础骨架阶段。** 已实现 I2 查询 Hook；通用文本已挂接系统消息队列入口；纹理替换已挂在精灵资源加载入口。其余文本入口尚未接入。
+NET 已接入 I2 查询、KAG 对白和选项、TMP 和 uGUI 文本，以及精灵资源加载。通用文本词条可按剧本位置或界面组件匹配。
 
 NET 保持游戏原有语言状态，不新增语言，也不提供 JAT 式的译文语言选择（这个设计不好，原本是想分发语言文件的，但是）
 
@@ -84,7 +84,7 @@ dotnet build CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin
 
 Output: `CRC3D3.NotEnoughTranslator.Plugin/bin/Release/net48/CRC3D3.NotEnoughTranslator.Plugin.dll`.
 
-`lib` is git-ignored. CI downloads the same three files from the private repository, which keeps one directory per game version (`1.0.1/`, `demo2/`, ...), using the `GAME_LIBS_TOKEN` secret. The version is the `DEFAULT_VERSION` constant at the top of [fetch_game_libs.sh](.github/scripts/fetch_game_libs.sh); the `GAME_LIBS_VERSION` repository variable overrides it without a commit, and `GAME_LIBS_REPO` / `GAME_LIBS_REF` override the repository and ref.
+`lib` is git-ignored. CI downloads the required assemblies, including `Unity.TextMeshPro.dll`, from the private repository using `GAME_LIBS_TOKEN`. The repository keeps one directory per game version. `GAME_LIBS_VERSION` can override the default version, and `GAME_LIBS_REPO` / `GAME_LIBS_REF` can override the repository and ref. [fetch_game_libs.sh](.github/scripts/fetch_game_libs.sh)
 
 <br>
 

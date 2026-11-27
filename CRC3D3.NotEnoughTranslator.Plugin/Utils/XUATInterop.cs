@@ -180,8 +180,8 @@ public static class XUATInterop
     }
 
     /// <summary>
-    /// 阻止 XUAT 重译已登记输出，或翻译已由 NET 显示 Hook 接管且存在译文的原文。
-    /// Prevent XUAT from retranslating recorded outputs or translating sources covered by NET display hooks and translations.
+    /// 阻止 XUAT 重译已登记输出；界面和剧情词条由实际显示入口按语境查询。
+    /// Prevent XUAT from retranslating recorded outputs. Display hooks look up UI and scenario entries with their context.
     /// </summary>
     /// <param name="__0">XUAT 待判定的文字 / The text whose translatability XUAT is checking.</param>
     /// <param name="__result">拦截时置为 false，表示 XUAT 不应翻译 / Set to false when intercepted to tell XUAT not to translate.</param>
@@ -192,9 +192,7 @@ public static class XUATInterop
         try
         {
             if (!TextTranslateManager.IsNetTranslatedText(__0) &&
-                !UITranslateManager.IsNetTranslatedText(__0) &&
-                !(TextTranslateManager.AreDisplayHooksInstalled &&
-                  TextTranslateManager.IsInTranslationDictionary(__0))) return true;
+                !UITranslateManager.IsNetTranslatedText(__0)) return true;
 
             __result = false;
             return false;

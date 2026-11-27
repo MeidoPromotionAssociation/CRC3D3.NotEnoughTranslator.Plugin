@@ -9,7 +9,7 @@ This document describes the current foundation for plugin development and integr
 | Module | Implemented | Not yet connected or verified |
 | --- | --- | --- |
 | UI / I2 | CSV loading, central query hook, parameter and AdvancedFormat processing, forced refresh | In-game UI coverage and font adaptation |
-| General text | JSONL loading, exact matching, regex replacement, secondary translation of captures, query API, system-message queue display hook | Other TMP / uGUI / script display hooks |
+| General text | JSONL loading, KAG and UI contextual exact matching, regex replacement, query API, KAG tags, TMP and uGUI display hooks, legacy TextMesh scene and fishing UI hooks | In-game coverage and XUAT interaction |
 | Texture replacement | PNG / JPG / JPEG indexing, reading data by texture name, in-place replacement at the sprite load entry and on uGUI image assignment, original dumps on a miss, reload and unload | Atlas sub-rects, non-Texture2D textures, and asynchronous load paths |
 
 This is a foundation, not a claim of complete game text or image coverage. Each module can be enabled or disabled independently.
@@ -24,7 +24,7 @@ XUAT interop is shared infrastructure, not a fourth translation module. It prote
 - XUAT protection records returned translations only, without caching source-to-result queries or adding, detecting, or stripping special markers.
 - Use .NET regex syntax with secondary exact translation of captures, without custom `Unescape` processing.
 - Read JSONL only in the general text module; do not introduce a TXT compatibility layer.
-- Do not port old NGUI, COM3D2 filesystem, or unverified global TMP setter patches.
+- Target CRC3D3's Unity text components and resource APIs.
 - Translate at display or query boundaries, without modifying the game's business data in place.
 
 ## 3. Data Flow
@@ -49,9 +49,10 @@ UI/Text: CSV / ZIP
 
 Text: JSONL / ZIP
   -> AsyncTranslationLoader
-  -> TextTranslations / TextRegexTranslations
+  -> TextTranslations / ContextualTextTranslations / TextRegexTranslations
   -> TextTranslateManager
-  -> TextTranslatePatch (system-message queue)
+  -> TextTranslatePatch (KAG and system-message fallback)
+  -> UiTextDisplayPatch (TMP / uGUI / TextMesh)
 
 Images under Texture
   -> TextureReplacementCatalog path index
@@ -95,7 +96,7 @@ When UI translation is enabled, `UITranslateManager.Init` installs both the I2 t
 
 If the game has no original translation for a term, a null I2 result merely leaves the component's current text unchanged; it does not guarantee restoration of an earlier value.
 
-General text already replaces display values at the system-message queue entry: after a reload, newly queued messages use the new dictionary while queued or already shown messages are not refreshed retroactively. Texture replacements apply the next time an asset loads, and already replaced textures are not restored automatically; the remaining text entries currently affect subsequent queries only. Refreshing existing display objects must be implemented alongside their specific display hooks.
+After publication, general text refreshes active labels from their sources. A weak component record holds the source while the component displays its NET translation, so reloading or disabling the module can replace or restore it. Prefab labels are also checked on enable. Scenario text uses the new catalog when it is next read from KAG, and texture replacements apply the next time an asset loads.
 
 ### Harmony Patch IDs
 
@@ -107,11 +108,14 @@ Following JAT, each patch class declares an explicit, stable, lowercase `Harmony
 | `LocalizationReadyPatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.localizationreadypatch` |
 | `TextureReplacePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.texture.texturereplacepatch` |
 | `TextTranslatePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.text.texttranslatepatch` |
+| `UiTextDisplayPatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.text.uitextdisplaypatch` |
 | `XUATInterop` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.utils.xuatinterop` |
 
 These are Harmony owner IDs, not the BepInEx plugin GUID; the plugin GUID remains unchanged. Future patch classes should declare their own IDs rather than reuse a module-level shorthand.
 
-All three patch classes follow JAT's layout: the methods in `UITextTranslatePatch` / `TextTranslatePatch` only carry `[HarmonyPatch]` / `[HarmonyPrefix]` attributes, and the owning manager installs them all with `Harmony.CreateAndPatchAll`, rolling back with `UnpatchSelf` on failure. Adding an entry means adding one annotated method to that class; the installation code stays unchanged. `UITextTranslatePatch` targets a method with an `out string` parameter that cannot appear in an attribute argument, so it resolves the target through `[HarmonyTargetMethod]` with the full signature; a signature mismatch throws and disables the UI module. `TextureReplacePatch` targets `GameResource.LoadAsset<Sprite>(string)`; the generic method is likewise built in `[HarmonyTargetMethod]`, and `WfSystem.FileSystem.dll` is a compile reference. `LocalizationReadyPatch` keeps its own `Install` / `Uninstall` because it makes a runtime decision (nothing to await once localization has completed).
+`UITextTranslatePatch` and `TextTranslatePatch` use Harmony attributes and their managers install them with `Harmony.CreateAndPatchAll`. `UiTextDisplayPatch` references the game's `Unity.TextMeshPro.dll` and uses its types and properties directly to patch TMP targets, read and write labels, and identify input fields. It subscribes to scene loading for legacy TextMesh. The system-message queue provides a general-text fallback when the TMP setter hook is unavailable.
+
+I2 callbacks and KAG display methods have a scoped bypass for component translation. Editable labels are preserved, and topic-filter logic reads the original category name while the label displays its translation. UI paths are collected only when the original has a UI-scoped entry or text dumping is active.
 
 ## 6. Integration APIs
 
@@ -135,7 +139,7 @@ All three expose `IsLoaded`, `IsLoading`, `EntryCount`, and `IsHookInstalled`. T
 | `DumpManager.DumpTexture(textureName, pngData)` | Write an original PNG using the replacement catalog's filename key, without overwriting existing files; called by the texture patch on a miss |
 | `DumpManager.Flush()` | Flush both text buffers and report whether all writes succeeded |
 
-The I2 query hook forwards missing text terms without modifying native results. General text's normal query API dumps misses only after loading; `IsInTranslationDictionary` remains a side-effect-free probe. Initial loading does not dump the entire pending dictionary as missing. General text display hooks currently cover only the system-message queue. The texture patch encodes and dumps the original image on a miss; the remaining display entries still need game integration.
+The I2 query hook can export missing text terms. General-text display hooks dump misses after snapshot publication, deduplicating by original and any available KAG or UI context. `IsInTranslationDictionary` remains a side-effect-free probe. The texture patch encodes and dumps the original image on a miss.
 
 Text-write failures retain buffers and attempt to restore the previous file length. PNG output uses a temporary file and a non-overwriting move. Dump deduplication survives resource reloads and is separate from XUAT's translated-output registry; it is not a translation-query cache. Switches, thresholds, and flush triggers are documented in the [resource guide](TranslationGuide.md).
 
@@ -155,13 +159,7 @@ Following JAT's decision-hook approach, NET locates the loaded `XUnity.AutoTrans
 - `TextTranslationCache`
 - `CompositeTextTranslationCache`
 
-Decision order:
-
-1. If the input is a recorded NET UI or general text translation, return `false` to prevent XUAT from translating it again.
-2. If general text display hooks have taken control and the input has an exact or regex translation, also return `false` and leave it to NET.
-3. Otherwise preserve XUAT's original decision. Exceptions in NET's decision logic also preserve original behavior rather than blocking every string.
-
-**Step 2 takes effect only after display hooks are actually installed.** `TextTranslateManager.Init` calls `SetDisplayHooksInstalled` with the result of `TextTranslatePatch.Install()`, and removing the patches or unloading the module resets it to false. It is not a translation-pack setting. One patch class covers several entries and currently hooks only the system-message queue, so this interception means dictionary sources are no longer handed to XUAT, while its coverage stays limited to integrated entries.
+A recorded NET output causes `IsTranslatable` to return `false`. Other strings and decision failures use XUAT's normal decision. NET selects contextual translations where the original is written, while the display hook has access to the component or KAG position.
 
 Translation recording and query APIs:
 
@@ -181,7 +179,7 @@ See [XUATInterop.cs](../../CRC3D3.NotEnoughTranslator.Plugin/Utils/XUATInterop.c
 ## 8. Future Integration Requirements
 
 - General text hooks must replace display values only, without modifying names that double as business keys, CSV data, or game state.
-- New general-text display entries belong in `Hooks/Text/TextTranslatePatch.cs` and reuse its Harmony ID and `Translate` helper: adding one `[HarmonyPatch]` method is enough for `PatchAll` to pick it up, without creating one patch class per entry.
+- General-text hooks use the catalog and dump infrastructure through `TextTranslateManager`.
 - Isolate I2 call context to avoid translating an I2-produced display value a second time.
 - Do not permanently exclude a component merely because it has `Localize`; the game can still assign text to that same component directly.
 - Texture integration must create and manage `Texture` / `Sprite` objects on Unity's main thread, with clear ownership of original and replacement resources.
@@ -198,6 +196,7 @@ Place matching CRC versions of these assemblies in the repository-root `lib` dir
 - `Assembly-CSharp-firstpass.dll`
 - `WfSystem.FileSystem.dll`
 - `UnityEngine.UI.dll`
+- `Unity.TextMeshPro.dll`
 
 Run from the repository root:
 
@@ -207,4 +206,4 @@ dotnet build CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin
 
 Async code uses `Task`, without adding a `System.Threading.Tasks.Extensions` / `ValueTask` runtime dependency. A successful build does not replace in-game verification.
 
-CI builds the same project: `.github/workflows/build.yml` downloads the three assemblies from the private `MeidoPromotionAssociation/CRC3D3.GameLibs` repository into `lib` before building, so they are never committed to this public repository. That repository keeps one directory per game version (`2.49.2/`, `demo2/`, ...); which one is used is decided by `DEFAULT_VERSION` at the top of `.github/scripts/fetch_game_libs.sh`, and the `GAME_LIBS_VERSION` repository variable overrides it. A tag matching `PluginVersion` additionally runs `.github/workflows/release.yml`, which packages and publishes the release.
+CI downloads the assemblies above from the private `MeidoPromotionAssociation/CRC3D3.GameLibs` repository into `lib` before building. That repository keeps one directory per game version. `DEFAULT_VERSION` at the top of `.github/scripts/fetch_game_libs.sh` selects the version and the `GAME_LIBS_VERSION` repository variable can override it. A tag matching `PluginVersion` runs `.github/workflows/release.yml` to package and publish the plugin. The release uses the game's copy of `Unity.TextMeshPro.dll` at runtime.

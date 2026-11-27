@@ -18,7 +18,7 @@ public static class DumpManager
 {
     private static readonly object SyncRoot = new();
     private static readonly HashSet<string> DumpedTerms = new(StringComparer.Ordinal);
-    private static readonly HashSet<(KagTextContext Context, string Original)> DumpedTexts = new();
+    private static readonly HashSet<(TextContext Context, string Original)> DumpedTexts = new();
     private static readonly List<string> TermDumpBuffer = new();
     private static readonly List<string> TextDumpBuffer = new();
     private static readonly byte[] PngSignature = { 137, 80, 78, 71, 13, 10, 26, 10 };
@@ -92,18 +92,19 @@ public static class DumpManager
     }
 
     /// <summary>
-    /// 按原文与可用的 KAG 语境去重，并写入词库可读取的 JSONL 模板。
-    /// Deduplicate by source text and available KAG context, and serialize a JSONL template that the catalog can read.
+    /// 按原文与可用语境去重，并写入词库可读取的 JSONL 模板。
+    /// Deduplicate by source text and available context, and serialize a JSONL template that the catalog can read.
     /// </summary>
-    internal static void DumpText(string original, KagTextContext kagContext)
+    internal static void DumpText(string original, TextContext context)
     {
         lock (SyncRoot)
         {
             if (!_initialized || !NotEnoughTranslator.EnableTextDump.Value ||
                 string.IsNullOrWhiteSpace(original) ||
-                !DumpedTexts.Add((kagContext, original))) return;
+                !DumpedTexts.Add((context, original))) return;
 
             var record = new JObject { ["original"] = original, ["text"] = string.Empty };
+            var kagContext = context.Kag;
             if (!kagContext.IsEmpty)
             {
                 var kag = new JObject();
@@ -114,6 +115,14 @@ public static class DumpManager
                 if (kagContext.Target != null) kag["target"] = kagContext.Target;
                 if (kagContext.Line is int line) kag["line"] = line;
                 record["context"] = new JObject { ["kag"] = kag };
+            }
+            else if (!context.Ui.IsEmpty)
+            {
+                var ui = new JObject();
+                if (context.Ui.Scene != null) ui["scene"] = context.Ui.Scene;
+                if (context.Ui.Path != null) ui["path"] = context.Ui.Path;
+                if (context.Ui.Component != null) ui["component"] = context.Ui.Component;
+                record["context"] = new JObject { ["ui"] = ui };
             }
 
             // 显式选择游戏内置 Newtonsoft.Json 支持的重载。

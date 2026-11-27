@@ -101,6 +101,7 @@ Each UTF-8 line contains one JSON object:
 | `text` | Required string | Translation or regex replacement string |
 | `regex` | Optional boolean | `true` selects regex; omitted or `false` selects exact matching |
 | `context.kag` | Optional object | Scope an exact entry to a KAG context |
+| `context.ui` | Optional object | Scope an exact entry to a Unity text component's location |
 
 General text JSONL requires `original`; `term` is not an alias. The UI CSV `Term` column is unchanged.
 
@@ -165,6 +166,32 @@ Use `context.kag.filename` to give the same choice different translations in the
 
 To scope an entry to a location within a script, copy `context.kag.label` from its `EnableTextDump` record. The value is the current label when `@hitret` or `@ChoicesSet` runs.
 
+#### UI Component Context
+
+General text covers TMP `text`, `SetText`, and character-buffer writes, uGUI `UnityEngine.UI.Text`, and legacy `UnityEngine.TextMesh` at scene load and on first use in the fishing UI. Prefab text on TMP and uGUI labels is also looked up. System messages are translated when displayed, so their translations can be scoped to the label's location.
+
+Specify one or more of these fields in `context.ui`. Source text and field values are case-sensitive. Copy the values from an `EnableTextDump` record.
+
+| Field | Component information it matches |
+| --- | --- |
+| `scene` | Name of the Unity scene that owns the component |
+| `path` | Object names from the scene root to the label's GameObject, separated by `/`, with literal names including `(Clone)` |
+| `component` | Fully qualified name of the concrete component type, such as `TMPro.TextMeshProUGUI`, `TMPro.TextMeshPro`, or `UnityEngine.UI.Text` |
+
+1. For the same `original`, every field an entry specifies must match. An unavailable runtime value cannot satisfy a condition.
+2. Prefer more matching fields. For equal field counts, prefer the first field present in only one entry, in the order `path` → `scene` → `component`. A path normally identifies a control, a scene limits a group of controls, and a component type is shared across the game. The last loaded translation wins for identical source text and conditions.
+3. On a UI context miss, try the general exact entry and then the general regex rules.
+
+The paths below are examples. The button uses one translation, the tab uses another, and other locations fall back to the general entry.
+
+```jsonl
+{"original":"戻る","text":"回去"}
+{"original":"戻る","text":"返回","context":{"ui":{"scene":"Settings","path":"Canvas/Settings/Footer/Back/Label"}}}
+{"original":"戻る","text":"返回上一页","context":{"ui":{"path":"Canvas/Settings/Tabs/Back/Label","component":"UnityEngine.UI.Text"}}}
+```
+
+Instances with identical names at the same hierarchy location share a path. Keep the escaping from the dump if an object name contains a literal slash or backslash. An exact entry may specify one context kind. Entries combining `context.kag` and `context.ui`, or a context and `regex: true`, are skipped. I2 handles its own localized writes. Scenario dialogue, speaker names, choices, and backlog text use the KAG entries. Editable input keeps the game's value, and placeholders can be translated as ordinary labels.
+
 ### 4.2 Regex Replacement
 
 A regex rule uses two distinct kinds of syntax:
@@ -190,7 +217,7 @@ Input `残り 30 秒` produces `剩余 30 秒`:
 
 Queries follow this order:
 
-With XUAT interop active, general text queries first skip recorded NET translations to prevent retranslation. Other inputs follow the order below; see section 8 for the integration boundaries.
+Display hooks try applicable contextual entries first, then query the general dictionary in the order below. With XUAT interop active, public queries without context skip recorded NET output.
 
 1. Look up the **entire input in the exact dictionary** first. Return immediately on a hit without trying regex rules.
 2. Otherwise, try regex rules in reverse [loading order](#2-loading-order-and-overrides), with later-loaded rules first.
@@ -426,14 +453,14 @@ Place PNG / JPG / JPEG files in `Texture` or its subdirectories.
 - The previous resource snapshot remains available during loading. File-reading failures retain it; successfully reading an empty directory clears old resources.
 - Individual malformed JSONL entries are skipped as described earlier, rather than treated as a failure to read the entire batch.
 
-UI reloading forces an I2 refresh. After a general-text reload, newly queued system messages use the new dictionary, while queued or already shown messages are not refreshed retroactively. Texture replacements apply the next time an asset loads and are not restored automatically; the remaining text entries affect subsequent queries only. If the game has no original translation for a term, a null I2 result does not guarantee restoration of an earlier component text value.
+UI reloading forces an I2 refresh. A general-text reload looks up the original text again for visible labels covered by its hooks. KAG uses the new catalog the next time it reads the scenario text. Texture replacements apply the next time an asset loads. When a term has no original translation, a null I2 result can leave the current component text in place.
 
 ### Dumping Untranslated Resources
 
 The plugin creates `Dump/UI/Text`, `Dump/Text`, and `Dump/Texture` at startup. Dumping is opt-in through the `6Dump` section; all three dump switches are disabled by default.
 
 - `EnableTermDump`: after the first UI snapshot is published, untranslated text-term queries produce CSV records with `Term,Original,Translation`. `Original` is the game's returned display text and `Translation` starts empty. Non-text terms and explicit-language queries are excluded. The UI module must remain enabled; triggering a resource reload can capture another localization pass for currently displayed UI.
-- `EnableTextDump` exports misses after general-text resources load. System messages are deduplicated by source text. Dialogue and choices are deduplicated by source text and all available `context.kag` fields. Keep the fields that distinguish a translation to let an entry cover other locations. Dictionary-only probes do not trigger dumps.
+- `EnableTextDump` exports misses after general-text resources load. UI entries are deduplicated by source text and all available `context.ui` fields. Scenario entries use source text and all available `context.kag` fields. Keep the fields that distinguish a translation to let an entry cover several locations. Dictionary-only probes do not trigger dumps.
 - `EnableTexturesDump`: when a sprite loads without a matching replacement, its original texture is encoded as PNG into `Dump/Texture` (unreadable textures are copied through a temporary RenderTexture first). Each name is attempted once per run; existing files are not overwritten, and incomplete temporary writes are not published as PNG files. This dumps only sprites that actually load, not the whole game.
 - UI terms and general text are deduplicated separately with Ordinal matching for the plugin session. Hot reloads do not reset these records. CSV quoting and JSON escaping preserve commas, quotes, backslashes, and line breaks; there is no normalized TXT copy.
 - `TermDumpThreshold` and `TextDumpThreshold` each default to `100`. Reaching a threshold, pressing the optional `FlushDump` shortcut, changing dump settings, reloading resources, or shutting down the plugin flushes buffered records. There is no periodic or per-frame flush. Failed writes retain their buffers for a later explicit retry; a process crash can still lose unwritten records.
@@ -450,8 +477,7 @@ NET can coexist with XUnity.AutoTranslator through JAT-style `IsTranslatable` de
 
 - `EnableXUATInterop/启用 XUAT 互操作` in `2General` is enabled by default. Without XUAT, integration is skipped; XUAT is not a required dependency.
 - UI / general text translations actually returned and recorded by NET are excluded from XUAT's translation decisions. Dynamic regex results can be recorded too, not just static dictionary values.
-- Exact and regex queries determine whether NET can translate an original string, but XUAT is prevented from taking it only after general text display hooks have actually taken control.
-- **Once general-text display hooks are installed, dictionary sources are no longer handed to XUAT.** This interception is enabled together with the system-message queue entry; when the entry is missing or installation fails, XUAT keeps its default behavior. Interop does not make JSONL translations appear by itself.
+- NET applies and records translations at its display hooks. XUAT skips recorded outputs and uses its own rules for other strings. The same source text can still reach XUAT at another location when a UI or scenario entry only applies elsewhere.
 - XUAT translation callbacks are not used as a replacement for display hooks. NET does not change XUAT's language, translation files, or marker settings.
 - Successful resource reloads or module unloading clear that module's translation records. Existing components still follow the refresh limitations described earlier; recording text does not itself refresh the display.
 

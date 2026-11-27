@@ -65,15 +65,21 @@ public sealed class JsonlTranslationFileProcessor : ITranslationFileProcessor
                 if (string.IsNullOrEmpty(original))
                     throw new JsonException("'original' must not be empty.");
 
-                var kagToken = (record["context"] as JObject)?["kag"];
-                if (kagToken != null)
+                var context = record["context"] as JObject;
+                var kagToken = context?["kag"];
+                var uiToken = context?["ui"];
+                if (kagToken != null || uiToken != null)
                 {
+                    if (kagToken != null && uiToken != null)
+                        throw new JsonException("Specify either 'context.kag' or 'context.ui' in an entry.");
                     if (regexToken?.Value<bool>() == true)
-                        throw new JsonException("'context.kag' supports exact translations only.");
+                        throw new JsonException("Context fields support exact translations only.");
 
-                    var kag = ReadKagContext(kagToken);
+                    var conditions = kagToken != null
+                        ? new TextContext(ReadKagContext(kagToken))
+                        : new TextContext(ReadUiContext(uiToken));
                     if (string.IsNullOrWhiteSpace(text)) continue;
-                    result.KagTextTranslations[(kag, original)] = text;
+                    result.ContextualTextTranslations[(conditions, original)] = text;
                 }
                 else if (regexToken?.Value<bool>() == true)
                     result.TextRegexTranslations.Add(new RegexTranslationRule(original, text, _regexTimeout, location));
@@ -113,19 +119,35 @@ public sealed class JsonlTranslationFileProcessor : ITranslationFileProcessor
             line = lineNumber;
         }
 
-        var context = new KagTextContext(ReadKagString(kag, "filename"), ReadKagString(kag, "label", allowEmpty: true),
-            ReadKagString(kag, "speaker"), ReadKagString(kag, "voice"), ReadKagString(kag, "target"), line);
+        var context = new KagTextContext(ReadContextString(kag, "kag", "filename"),
+            ReadContextString(kag, "kag", "label", allowEmpty: true),
+            ReadContextString(kag, "kag", "speaker"), ReadContextString(kag, "kag", "voice"),
+            ReadContextString(kag, "kag", "target"), line);
         if (context.IsEmpty) throw new JsonException("'context.kag' requires at least one matching field.");
         return context;
     }
 
     /// <summary>
-    /// 读取可选的 KAG 字符串字段，字段存在时校验类型和空值。
-    /// Read an optional KAG string, validating its type and empty value when present.
+    /// 读取界面匹配条件并验证至少提供一个字段。
+    /// Read UI matching conditions and require at least one field.
     /// </summary>
-    private static string ReadKagString(JObject kag, string field, bool allowEmpty = false)
+    private static UiTextContext ReadUiContext(JToken token)
     {
-        var token = kag[field];
+        if (token is not JObject ui) throw new JsonException("'context.ui' must be an object.");
+
+        var context = new UiTextContext(ReadContextString(ui, "ui", "scene"),
+            ReadContextString(ui, "ui", "path"), ReadContextString(ui, "ui", "component"));
+        if (context.IsEmpty) throw new JsonException("'context.ui' requires at least one matching field.");
+        return context;
+    }
+
+    /// <summary>
+    /// 读取可选的语境字符串字段，字段存在时校验类型和空值。
+    /// Read an optional context string, validating its type and empty value when present.
+    /// </summary>
+    private static string ReadContextString(JObject context, string scope, string field, bool allowEmpty = false)
+    {
+        var token = context[field];
         if (token == null) return null;
         if (token.Type == JTokenType.String)
         {
@@ -134,7 +156,7 @@ public sealed class JsonlTranslationFileProcessor : ITranslationFileProcessor
         }
 
         var expected = allowEmpty ? "a string" : "a non-blank string";
-        throw new JsonException($"'context.kag.{field}' must be {expected}.");
+        throw new JsonException($"'context.{scope}.{field}' must be {expected}.");
     }
 
     /// <summary>

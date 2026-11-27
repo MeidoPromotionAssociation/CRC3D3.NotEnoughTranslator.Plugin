@@ -48,15 +48,15 @@ internal static class TextTranslatePatch
     }
 
     /// <summary>
-    /// 系统消息队列入口，覆盖不经过 I2 的硬编码提示。
-    /// The system-message queue entry, covering hardcoded notices that never reach I2.
+    /// TMP 显示补丁缺失时使用系统消息队列入口查询通用词库。
+    /// Look up system messages at the queue entry when the TMP display hook is unavailable.
     /// </summary>
     /// <param name="__0">按位置绑定的消息原文，游戏改名不影响补丁 / The message text bound by position, unaffected by game-side parameter renames.</param>
     [HarmonyPatch(typeof(SystemMessagesManager), nameof(SystemMessagesManager.ShowSystemMessage), typeof(string))]
     [HarmonyPrefix]
     private static void SystemMessagePrefix(ref string __0)
     {
-        Translate(ref __0);
+        if (!UiTextDisplayPatch.IsTmpInstalled) Translate(ref __0);
     }
 
     /// <summary>
@@ -242,7 +242,7 @@ internal static class TextTranslatePatch
         try
         {
             var found = scriptSource
-                ? TextTranslateManager.TryGetOriginalTranslation(text, out var translated, _scriptScope.Kag)
+                ? TextTranslateManager.TryGetOriginalTranslation(text, out var translated, new TextContext(_scriptScope.Kag))
                 : TextTranslateManager.TryGetTranslation(text, out translated);
             if (found && !string.IsNullOrWhiteSpace(translated))
             {

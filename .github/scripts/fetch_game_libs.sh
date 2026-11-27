@@ -5,7 +5,7 @@
 # 所以从私有仓库按游戏版本分目录下载：
 #
 #   https://github.com/MeidoPromotionAssociation/CRC3D3.GameLibs
-#     ├── 1.0.1/   I2.Localization.dll, Assembly-CSharp.dll, Assembly-CSharp-firstpass.dll, WfSystem.FileSystem.dll, UnityEngine.UI.dll
+#     ├── 1.0.1/   I2.Localization.dll, Assembly-CSharp.dll, Assembly-CSharp-firstpass.dll, WfSystem.FileSystem.dll, UnityEngine.UI.dll, Unity.TextMeshPro.dll
 #     └── demo2/    ...
 #
 # 切换游戏版本只需要改下面 DEFAULT_VERSION 这一行，或者用仓库变量 GAME_LIBS_VERSION 覆盖
@@ -36,6 +36,7 @@ FILES=(
   "Assembly-CSharp-firstpass.dll"
   "WfSystem.FileSystem.dll"
   "UnityEngine.UI.dll"
+  "Unity.TextMeshPro.dll"
 )
 
 if [ -z "${VERSION}" ]; then
@@ -57,7 +58,7 @@ for name in "${FILES[@]}"; do
   if ! gh api "repos/${REPO}/contents/${VERSION}/${name}?ref=${REF}" \
       -H "Accept: application/vnd.github.raw" > "${DEST_DIR}/${name}"; then
     echo "::error::failed to download ${VERSION}/${name} from ${REPO}@${REF}"
-    echo "::error::Confirm that the private repository contains the directory ${VERSION}/, all five DLLs are present, and that GAME_LIBS_TOKEN has read permissions."
+    echo "::error::Check that ${VERSION}/${name} is present and that GAME_LIBS_TOKEN has read permissions."
     exit 1
   fi
 

@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using CRC3D3.NotEnoughTranslator.Plugin.Hooks.UI;
 using CRC3D3.NotEnoughTranslator.Plugin.Loader;
 using CRC3D3.NotEnoughTranslator.Plugin.Loader.Processor;
@@ -12,6 +13,8 @@ namespace CRC3D3.NotEnoughTranslator.Plugin.Manger;
 public static class UITranslateManager
 {
     private static readonly TranslatedTextRegistry TranslatedTexts = new();
+    private static readonly ConditionalWeakTable<string, object> DisplayOutputs = new();
+    private static readonly object DisplayOutput = new();
     private static ResourceModule<TranslationLoadResult> _module;
     private static volatile TranslationCatalog _catalog = TranslationCatalog.Empty;
     private static bool _refreshPending;
@@ -87,14 +90,22 @@ public static class UITranslateManager
     }
 
     /// <summary>
-    /// XUAT 互操作启用时登记处理完成的最终 UI 译文，避免再次翻译。
-    /// Record final processed UI translations while XUAT interop is active to prevent retranslation.
+    /// 登记 I2 返回的最终字串，并在互操作启用时保护其内容免于 XUAT 重译。
+    /// Track the final string returned by I2 and protect its contents from XUAT while interop is active.
     /// </summary>
     /// <param name="text">参数展开和格式处理完成后的译文 / The translation after parameter expansion and formatting.</param>
     public static void MarkTranslated(string text)
     {
+        if (string.IsNullOrEmpty(text)) return;
+        DisplayOutputs.GetValue(text, _ => DisplayOutput);
         if (XUATInterop.IsInstalled) TranslatedTexts.Add(text);
     }
+
+    /// <summary>
+    /// 通过字串实例识别直接写入组件的 I2 译文。
+    /// Identify an I2 translation passed directly to a component by string identity.
+    /// </summary>
+    internal static bool IsI2Output(string text) => text != null && DisplayOutputs.TryGetValue(text, out _);
 
     /// <summary>
     /// 在 Unity 主线程按启用配置初始化、重载或卸载 UI 模块。

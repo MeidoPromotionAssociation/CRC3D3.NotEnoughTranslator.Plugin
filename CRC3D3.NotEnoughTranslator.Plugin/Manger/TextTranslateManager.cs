@@ -18,15 +18,15 @@ public static class TextTranslateManager
 
     public static bool IsLoaded => _module?.IsLoaded == true;
     public static bool IsLoading => _module?.IsLoading == true;
-    public static bool IsHookInstalled => _displayHarmony != null;
+    public static bool IsHookInstalled => _displayHarmony != null || UiTextDisplayPatch.IsInstalled;
     public static int ExactCount => _catalog.ExactCount;
     public static int RegexCount => _catalog.RegexCount;
     public static int EntryCount => ExactCount + RegexCount;
     public static bool AreDisplayHooksInstalled => _displayHooksInstalled;
 
     /// <summary>
-    /// 在 Unity 主线程初始化通用文本模块，一次性挂接全部显示入口，并从 Text 异步加载 JSONL 精确与正则译文。
-    /// Initialize the general-text module on Unity's main thread, patch every display entry in one pass, and load JSONL exact and regex translations asynchronously from Text.
+    /// 在 Unity 主线程挂接剧情与界面显示入口，并从 Text 异步加载 JSONL 精确与正则译文。
+    /// Patch scenario and UI display entries on Unity's main thread and load JSONL translations asynchronously from Text.
     /// </summary>
     public static void Init()
     {
@@ -42,7 +42,8 @@ public static class TextTranslateManager
             LogManager.Warning($"[Text] Cannot install display hooks; general text stays query-only/无法安装显示补丁，通用文本仍仅提供查询: {exception.Message}");
         }
 
-        SetDisplayHooksInstalled(_displayHarmony != null);
+        UiTextDisplayPatch.Install();
+        SetDisplayHooksInstalled(_displayHarmony != null || UiTextDisplayPatch.IsInstalled);
         _module = new ResourceModule<TranslationLoadResult>("Text", token =>
             AsyncTranslationLoader.LoadOnceAsync("Text", NotEnoughTranslator.TranslationTextPath,
                 NotEnoughTranslator.AllowFilesInZipLoadInOrder.Value, token,
@@ -74,14 +75,27 @@ public static class TextTranslateManager
     /// </summary>
     /// <param name="sourceText">待翻译的已知原文 / The known source text to translate.</param>
     /// <param name="translation">命中时返回的译文 / The translation returned on a match.</param>
-    /// <param name="kagContext">可选的 KAG 剧情语境 / The optional KAG scenario context.</param>
+    /// <param name="context">可选的剧情或界面语境 / The optional scenario or UI context.</param>
     /// <returns>词库命中时为 true / True if the catalog matches.</returns>
     internal static bool TryGetOriginalTranslation(string sourceText, out string translation,
-        KagTextContext kagContext = default)
+        TextContext context = default)
     {
-        if (_catalog.TryGetTranslation(sourceText, kagContext, out translation)) return true;
-        if (IsLoaded && NotEnoughTranslator.EnableTextDump.Value) DumpManager.DumpText(sourceText, kagContext);
+        var catalog = _catalog;
+        if (catalog.TryGetTranslation(sourceText, context, out translation)) return true;
+        if (catalog != TranslationCatalog.Empty && NotEnoughTranslator.EnableTextDump.Value)
+            DumpManager.DumpText(sourceText, context);
         return false;
+    }
+
+    /// <summary>
+    /// 只有原文存在界面词条或开启了导出时，才需要读取组件的完整位置。
+    /// Resolve a component's full location only when the source has a UI entry or dumping is enabled.
+    /// </summary>
+    internal static bool NeedsUiContext(string sourceText)
+    {
+        var catalog = _catalog;
+        return catalog.HasUiContext(sourceText) ||
+               (catalog != TranslationCatalog.Empty && NotEnoughTranslator.EnableTextDump.Value);
     }
 
     /// <summary>
@@ -117,8 +131,8 @@ public static class TextTranslateManager
     }
 
     /// <summary>
-    /// 登记实际显示 Hook 的安装状态，控制 NET 是否接管 XUAT 的原文判定。
-    /// Track display-hook installation so NET can control XUAT decisions for source text.
+    /// 登记实际显示 Hook 的安装状态，供接入诊断使用。
+    /// Track display-hook installation for integration diagnostics.
     /// </summary>
     /// <param name="installed">显示 Hook 确已安装时为 true，移除后为 false / True only after display hooks are installed; false after removal.</param>
     public static void SetDisplayHooksInstalled(bool installed)
@@ -143,6 +157,7 @@ public static class TextTranslateManager
     /// </summary>
     public static void Unload()
     {
+        UiTextDisplayPatch.Uninstall();
         _displayHarmony?.UnpatchSelf();
         _displayHarmony = null;
         _module?.Dispose();
@@ -160,8 +175,9 @@ public static class TextTranslateManager
     private static void ApplyResult(TranslationLoadResult result)
     {
         _catalog = new TranslationCatalog(result.TextTranslations, result.TextRegexTranslations,
-            result.KagTextTranslations);
+            result.ContextualTextTranslations);
         TranslatedTexts.Clear();
+        UiTextDisplayPatch.RefreshVisible();
         LogManager.Info($"[Text] Loaded/已加载 {ExactCount} exact, {RegexCount} regex, " +
                         $"{result.SkippedLines} skipped, {result.ElapsedMilliseconds} ms");
     }
