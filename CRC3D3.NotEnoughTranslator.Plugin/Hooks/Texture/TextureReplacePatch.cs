@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using CRC3D3.NotEnoughTranslator.Plugin.Hooks.UI;
 using CRC3D3.NotEnoughTranslator.Plugin.Manger;
 using CRC3D3.NotEnoughTranslator.Plugin.Translation;
 using CRC3D3.NotEnoughTranslator.Plugin.Utils;
@@ -12,11 +13,8 @@ namespace CRC3D3.NotEnoughTranslator.Plugin.Hooks.Texture;
 
 /// <summary>
 /// 纹理替换补丁：在精灵资源加载入口和 uGUI 图片赋值处原地替换纹理像素，未命中时按配置导出原图。
-/// 由 <see cref="TextureReplaceManager"/> 通过 PatchAll 一次性安装。
 /// Texture-replacement patches that swap texture pixels in place at the sprite load entry and on uGUI image assignment, dumping originals on a miss.
-/// Installed in one go by <see cref="TextureReplaceManager"/> through PatchAll.
 /// </summary>
-[HarmonyPatch]
 internal static class TextureReplacePatch
 {
     /// <summary>
@@ -32,17 +30,33 @@ internal static class TextureReplacePatch
     private static readonly HashSet<string> DumpedKeys = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 分别注册泛型资源加载与 uGUI 入口，供管理器按同一个 ID 卸载。
+    /// Register the generic resource loader and uGUI entries separately under one owner ID.
+    /// </summary>
+    internal static Harmony Install()
+    {
+        var harmony = new Harmony(HarmonyId);
+        harmony.Patch(FindSpriteLoader(),
+            postfix: new HarmonyMethod(typeof(TextureReplacePatch), nameof(LoadAssetPostfix)));
+        harmony.Patch(AccessTools.PropertySetter(typeof(Image), nameof(Image.sprite)),
+            prefix: new HarmonyMethod(typeof(TextureReplacePatch), nameof(ImageSpritePrefix)));
+        harmony.Patch(AccessTools.DeclaredMethod(typeof(MaskableGraphic), "OnEnable"),
+            prefix: new HarmonyMethod(typeof(TextureReplacePatch), nameof(GraphicOnEnablePrefix)));
+        return harmony;
+    }
+
+    /// <summary>
     /// 定位 <c>GameResource.LoadAsset&lt;Sprite&gt;(string)</c>；泛型参数无法写进特性构造参数，只能运行时构造。
     /// Locate <c>GameResource.LoadAsset&lt;Sprite&gt;(string)</c>; generic arguments cannot appear in an attribute argument, so it is constructed at runtime.
     /// </summary>
     /// <returns>已构造的泛型方法 / The constructed generic method.</returns>
     /// <exception cref="MissingMethodException">签名不匹配时抛出，由管理器回滚 / Thrown on a signature mismatch so the manager can roll back.</exception>
-    [HarmonyTargetMethod]
-    private static MethodBase TargetMethod()
+    private static MethodBase FindSpriteLoader()
     {
         foreach (var method in typeof(GameResource).GetMethods(BindingFlags.Public | BindingFlags.Static))
         {
-            if (method.Name != "LoadAsset" || !method.IsGenericMethodDefinition) continue;
+            if (method.Name != nameof(GameResource.LoadAsset) || !method.IsGenericMethodDefinition ||
+                method.GetGenericArguments().Length != 1) continue;
             var parameters = method.GetParameters();
             if (parameters.Length != 1 || parameters[0].ParameterType != typeof(string)) continue;
             return method.MakeGenericMethod(typeof(Sprite));
@@ -57,14 +71,13 @@ internal static class TextureReplacePatch
     /// Replace texture pixels after the asset returns, dumping the original on a miss when enabled.
     /// </summary>
     /// <param name="__0">按位置绑定的资源名 / The asset name, bound by position.</param>
-    /// <param name="__result">加载到的精灵，可能为 null / The loaded sprite, which may be null.</param>
-    [HarmonyPostfix]
-    private static void LoadAssetPostfix(string __0, Sprite __result)
+    /// <param name="__result">加载结果，泛型共享代码也可能返回其他资源 / The loaded object, which may be another asset type under generic code sharing.</param>
+    private static void LoadAssetPostfix(string __0, UnityEngine.Object __result)
     {
-        if (__result == null) return;
+        if (__result is not Sprite sprite || sprite == null) return;
         try
         {
-            Apply(__result, __0, true);
+            Apply(sprite, __0, true);
         }
         catch (Exception exception)
         {
@@ -77,8 +90,6 @@ internal static class TextureReplacePatch
     /// uGUI image assignment entry, covering sprites that never pass through GameResource, such as prefab-serialized images.
     /// </summary>
     /// <param name="__0">按位置绑定的 sprite 参数，原地修改其纹理 / The sprite argument bound by position, whose texture is modified in place.</param>
-    [HarmonyPatch(typeof(Image), nameof(Image.sprite), MethodType.Setter)]
-    [HarmonyPrefix]
     private static void ImageSpritePrefix(ref Sprite __0)
     {
         if (__0 == null) return;
@@ -97,9 +108,6 @@ internal static class TextureReplacePatch
     /// Reassign the sprite on activation so prefab-deserialized fields also pass through the <see cref="Image.sprite"/> setter.
     /// </summary>
     /// <param name="__instance">被激活的图形组件 / The graphic component being enabled.</param>
-    // OnEnable 是 protected，不能写 nameof，只能用字符串 / OnEnable is protected, so the name is a literal
-    [HarmonyPatch(typeof(MaskableGraphic), "OnEnable")]
-    [HarmonyPrefix]
     private static void GraphicOnEnablePrefix(MaskableGraphic __instance)
     {
         if (!(__instance is Image image)) return;
@@ -133,6 +141,7 @@ internal static class TextureReplacePatch
     /// <param name="reportSkip">跳过原因是否写入日志；UI 赋值路径会大量命中图集子图，不重复告警 / Whether to log skip reasons; the UI path hits atlas sub-rects often and stays quiet.</param>
     private static void Apply(Sprite sprite, string nameHint, bool reportSkip)
     {
+        if (UISpriteReplacePatch.IsReplacement(sprite)) return;
         var texture = sprite.texture;
         if (texture == null) return;
         var wholeTexture = IsWholeTexture(sprite, texture);

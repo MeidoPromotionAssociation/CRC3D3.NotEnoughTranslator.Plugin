@@ -8,7 +8,7 @@ This document describes the current foundation for plugin development and integr
 
 | Module | Implemented | Not yet connected or verified |
 | --- | --- | --- |
-| UI / I2 | CSV loading, central query hook, parameter and AdvancedFormat processing, forced refresh | In-game UI coverage and font adaptation |
+| UI | I2 CSV terms and refresh, single-sprite replacement in uGUI Images including atlas entries | In-game UI coverage and font adaptation |
 | General text | JSONL loading, KAG and UI contextual exact matching, regex replacement, query API, KAG tags, TMP and uGUI display hooks, legacy TextMesh scene and fishing UI hooks | In-game coverage and XUAT interaction |
 | Texture replacement | PNG / JPG / JPEG indexing, reading data by texture name, in-place replacement at the sprite load entry and on uGUI image assignment, original dumps on a miss, reload and unload | Atlas sub-rects, non-Texture2D textures, and asynchronous load paths |
 
@@ -34,6 +34,7 @@ Paths below are relative to `BepInEx/NotEnoughTranslator`. They follow JAT's mod
 | Module | Resource loading | Dump output |
 | --- | --- | --- |
 | UI / I2 | `UI/Text` | `Dump/UI/Text` |
+| UI sprites | `UI/Sprite` | |
 | General text | `Text` | `Dump/Text` |
 | Texture replacement | `Texture` | `Dump/Texture` |
 
@@ -46,6 +47,11 @@ UI/Text: CSV / ZIP
   -> UITranslateManager
   -> UITextTranslatePatch
   -> I2 display flow
+
+UI/Sprite: images
+  -> TextureReplacementCatalog path index
+  -> UITranslateManager
+  -> UISpriteReplacePatch (Image.sprite / Image.overrideSprite / Image.OnEnable)
 
 Text: JSONL / ZIP
   -> AsyncTranslationLoader
@@ -64,7 +70,7 @@ The two text modules share loading infrastructure, but keep their resource chann
 
 ## 4. UI / I2 Query Overrides
 
-The target is CRC's `LocalizationManager.TryGetTranslation`, including its `Localize.AdvancedFormat` parameter. If the expected signature is unavailable, the plugin logs an error and leaves the UI module disabled instead of forcing a language change.
+The target is CRC's `LocalizationManager.TryGetTranslation`, including its `Localize.AdvancedFormat` parameter. A signature mismatch logs an error and disables the I2 hook.
 
 Query behavior:
 
@@ -96,6 +102,8 @@ When UI translation is enabled, `UITranslateManager.Init` installs both the I2 t
 
 If the game has no original translation for a term, a null I2 result merely leaves the component's current text unchanged; it does not guarantee restoration of an earlier value.
 
+The UI sprite switch controls its own resource snapshot. The manager indexes `UI/Sprite` in the background and publishes it on the Unity thread. `UISpriteReplacePatch` decodes an image on its first hit and reuses the generated sprite for the same original Sprite object. It runs before the whole-texture hook on `Image.sprite`, which skips sprites owned by the UI module. Reload and disable restore base and override references before freeing generated resources. The override field is read directly to distinguish an empty slot from the getter's base-sprite fallback.
+
 After publication, general text refreshes active labels from their sources. A weak component record holds the source while the component displays its NET translation, so reloading or disabling the module can replace or restore it. Prefab labels are also checked on enable. Scenario text uses the new catalog when it is next read from KAG, and texture replacements apply the next time an asset loads.
 
 ### Harmony Patch IDs
@@ -106,6 +114,7 @@ Following JAT, each patch class declares an explicit, stable, lowercase `Harmony
 | --- | --- |
 | `UITextTranslatePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.uitexttranslatepatch` |
 | `LocalizationReadyPatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.localizationreadypatch` |
+| `UISpriteReplacePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.ui.uispritereplacepatch` |
 | `TextureReplacePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.texture.texturereplacepatch` |
 | `TextTranslatePatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.text.texttranslatepatch` |
 | `UiTextDisplayPatch` | `github.meidopromotionassociation.crc3d3.notenoughtranslator.plugin.hooks.text.uitextdisplaypatch` |

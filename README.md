@@ -10,7 +10,7 @@ NET hooks I2 queries, KAG dialogue and choices, TMP and uGUI text, and sprite lo
 
 NET keeps the game's language state unchanged. It does not add languages or provide JAT-style translation-language selection.
 
-Under `BepInEx/NotEnoughTranslator`, resources follow JAT's layout without the language layer: `UI/Text`, `Text`, and `Texture`. Opt-in dump infrastructure writes to the matching subdirectories under `Dump`, which are never loaded as translations.
+Under `BepInEx/NotEnoughTranslator`, resources use JAT's layout: UI terms in `UI/Text`, individual UI sprites in `UI/Sprite`, general text in `Text`, and whole textures in `Texture`. Dumps are written under `Dump`.
 
 Optional XUAT interop uses JAT-style translation decisions, without adding or detecting special markers. See the [interop boundaries](Document/English/TranslationGuide.md#8-xuat-interoperability).
 
@@ -49,7 +49,7 @@ NET 已接入 I2 查询、KAG 对白和选项、TMP 和 uGUI 文本，以及精�
 
 NET 保持游戏原有语言状态，不新增语言，也不提供 JAT 式的译文语言选择（这个设计不好，原本是想分发语言文件的，但是）
 
-资源沿用 JAT 去掉语言层后的目录：`BepInEx/NotEnoughTranslator` 下的 `UI/Text`、`Text`、`Texture`。可选的导出基础设施写入 `Dump` 下的对应子目录，导出文件不会被当作翻译加载。
+`BepInEx/NotEnoughTranslator` 下的 `UI/Text` 存放 UI 词条，`UI/Sprite` 存放单张 UI 精灵替换图，`Text` 存放通用文本，`Texture` 存放整张纹理的替换图。导出文件写入 `Dump`。
 
 自动与 [XUnity.AutoTranslator](https://github.com/bbepis/XUnity.AutoTranslator) 集成，被 NET 翻译过的 内容不会再被 XUAT 翻译，不添加或检测特殊标记。具体能力边界见 [XUAT 互操作说明](Document/简体中文_SimplifiedChinese/翻译指南.md#8-xuat-互操作)。
 

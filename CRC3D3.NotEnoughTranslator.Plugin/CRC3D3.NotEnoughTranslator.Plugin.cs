@@ -47,6 +47,12 @@ public class NotEnoughTranslator : BaseUnityPlugin
     public static readonly string UITextPath = Path.Combine(UIPath, "Text");
 
     /// <summary>
+    /// 按精灵名称匹配的 UI 精灵替换图目录。
+    /// The directory for UI replacement images matched by sprite name.
+    /// </summary>
+    public static readonly string UISpritePath = Path.Combine(UIPath, "Sprite");
+
+    /// <summary>
     /// 仅用于导出的根目录，不参与翻译资源加载。
     /// The dump-only root, excluded from translation-resource loading.
     /// </summary>
@@ -80,6 +86,7 @@ public class NotEnoughTranslator : BaseUnityPlugin
     public static ConfigEntry<bool> AllowFilesInZipLoadInOrder;
     public static ConfigEntry<KeyboardShortcut> ReloadTranslateResourceShortcut;
     public static ConfigEntry<bool> EnableUITranslation;
+    public static ConfigEntry<bool> EnableUISpriteReplace;
     public static ConfigEntry<bool> EnableTextTranslation;
     public static ConfigEntry<bool> EnableTextureReplacement;
     public static ConfigEntry<int> RegexTimeoutMilliseconds;
@@ -115,6 +122,8 @@ public class NotEnoughTranslator : BaseUnityPlugin
             "Use JAT-style translation decisions without special markers/通过 JAT 式翻译判定与 XUAT 共存，不使用特殊标记");
         EnableUITranslation = Config.Bind("3UI", "Enabled/启用", true,
             "Override I2 text queries without changing the game language/覆盖 I2 文本查询，不改变游戏语言");
+        EnableUISpriteReplace = Config.Bind("3UI", "EnableUISpriteReplace/启用UI精灵图替换", true,
+            "Replace uGUI sprites by name with images from UI/Sprite/使用 UI/Sprite 中的图片按名称替换 uGUI 精灵");
         EnableTextTranslation = Config.Bind("4Text", "Enabled/启用", true,
             "Load JSONL exact and regex translations/加载 JSONL 精确与正则翻译");
         RegexTimeoutMilliseconds = Config.Bind("4Text", "RegexTimeoutMilliseconds/正则超时毫秒", 100,
@@ -139,6 +148,7 @@ public class NotEnoughTranslator : BaseUnityPlugin
 
         AllowFilesInZipLoadInOrder.SettingChanged += OnResourceSettingsChanged;
         EnableUITranslation.SettingChanged += OnResourceSettingsChanged;
+        EnableUISpriteReplace.SettingChanged += OnResourceSettingsChanged;
         EnableTextTranslation.SettingChanged += OnResourceSettingsChanged;
         EnableTextureReplacement.SettingChanged += OnResourceSettingsChanged;
         RegexTimeoutMilliseconds.SettingChanged += OnResourceSettingsChanged;
@@ -187,6 +197,8 @@ public class NotEnoughTranslator : BaseUnityPlugin
             AllowFilesInZipLoadInOrder.SettingChanged -= OnResourceSettingsChanged;
         if (EnableUITranslation != null)
             EnableUITranslation.SettingChanged -= OnResourceSettingsChanged;
+        if (EnableUISpriteReplace != null)
+            EnableUISpriteReplace.SettingChanged -= OnResourceSettingsChanged;
         if (EnableTextTranslation != null)
             EnableTextTranslation.SettingChanged -= OnResourceSettingsChanged;
         if (EnableTextureReplacement != null)

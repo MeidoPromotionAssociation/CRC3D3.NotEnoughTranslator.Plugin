@@ -28,7 +28,7 @@ public static class TextureReplaceManager
         if (_module != null || !NotEnoughTranslator.EnableTextureReplacement.Value) return;
         try
         {
-            _textureHarmony = Harmony.CreateAndPatchAll(typeof(TextureReplacePatch), TextureReplacePatch.HarmonyId);
+            _textureHarmony = TextureReplacePatch.Install();
         }
         catch (Exception exception)
         {

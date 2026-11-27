@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using CRC3D3.NotEnoughTranslator.Plugin.Hooks.UI;
 using CRC3D3.NotEnoughTranslator.Plugin.Loader;
 using CRC3D3.NotEnoughTranslator.Plugin.Loader.Processor;
@@ -16,6 +17,7 @@ public static class UITranslateManager
     private static readonly ConditionalWeakTable<string, object> DisplayOutputs = new();
     private static readonly object DisplayOutput = new();
     private static ResourceModule<TranslationLoadResult> _module;
+    private static ResourceModule<TextureReplacementCatalog> _spriteModule;
     private static volatile TranslationCatalog _catalog = TranslationCatalog.Empty;
     private static bool _refreshPending;
     private static Harmony _textHarmony;
@@ -26,10 +28,16 @@ public static class UITranslateManager
     public static int EntryCount => _catalog.ExactCount;
 
     /// <summary>
-    /// 在 Unity 主线程安装 I2 翻译与本地化就绪补丁，并从 UI/Text 异步加载词条。
-    /// Install I2 translation and localization-readiness hooks on Unity's main thread and load terms asynchronously from UI/Text.
+    /// 在 Unity 主线程初始化启用的 I2 与 UI 精灵资源。
+    /// Initialize enabled I2 and UI sprite resources on Unity's main thread.
     /// </summary>
-    public static void Init()
+    public static void Init() => Reload();
+
+    /// <summary>
+    /// 安装 I2 与本地化就绪补丁，并从 UI/Text 异步加载词条。
+    /// Install the I2 and localization-readiness hooks and load terms asynchronously from UI/Text.
+    /// </summary>
+    private static void InitText()
     {
         if (_module != null || !NotEnoughTranslator.EnableUITranslation.Value) return;
         try
@@ -113,16 +121,46 @@ public static class UITranslateManager
     /// </summary>
     public static void Reload()
     {
-        if (!NotEnoughTranslator.EnableUITranslation.Value) Unload();
-        else if (_module == null) Init();
+        if (!NotEnoughTranslator.EnableUITranslation.Value) UnloadText();
+        else if (_module == null) InitText();
         else _module.Reload();
+
+        if (NotEnoughTranslator.EnableUISpriteReplace.Value)
+        {
+            _spriteModule ??= new ResourceModule<TextureReplacementCatalog>("UI/Sprite", token =>
+                Task.Run(() => TextureReplacementCatalog.Load(NotEnoughTranslator.UISpritePath, token), token),
+                UISpriteReplacePatch.ApplyCatalog);
+            _spriteModule.Reload();
+        }
+        else UnloadSprites();
+    }
+
+    /// <summary>
+    /// 卸载 I2 和精灵资源，移除 UI 补丁并还原显示。
+    /// Unload I2 and sprite resources, remove UI hooks, and restore display values.
+    /// </summary>
+    public static void Unload()
+    {
+        UnloadText();
+        UnloadSprites();
+    }
+
+    /// <summary>
+    /// 取消精灵索引加载并还原已替换的 uGUI 精灵。
+    /// Cancel sprite indexing and restore replaced uGUI sprites.
+    /// </summary>
+    private static void UnloadSprites()
+    {
+        _spriteModule?.Dispose();
+        _spriteModule = null;
+        UISpriteReplacePatch.Unload();
     }
 
     /// <summary>
     /// 卸载 UI 资源和翻译补丁并请求原生刷新，保留就绪回调直到插件退出。
     /// Unload UI resources and translation hooks and request a native refresh, retaining readiness callbacks until plugin shutdown.
     /// </summary>
-    public static void Unload()
+    private static void UnloadText()
     {
         var hadTranslations = EntryCount != 0;
         _module?.Dispose();

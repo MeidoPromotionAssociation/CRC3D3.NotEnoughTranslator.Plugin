@@ -11,6 +11,7 @@ UI translations apply through I2 lookups. General text covers system messages, A
 - Configuration file: `BepInEx/config/Github.MeidoPromotionAssociation.CRC3D3.NotEnoughTranslator.Plugin.cfg`
 - Translation root: `BepInEx/NotEnoughTranslator`
 - UI text directory: `BepInEx/NotEnoughTranslator/UI/Text`
+- UI sprite directory: `BepInEx/NotEnoughTranslator/UI/Sprite`
 - General text directory: `BepInEx/NotEnoughTranslator/Text`
 - Texture directory: `BepInEx/NotEnoughTranslator/Texture`
 - Dump root: `BepInEx/NotEnoughTranslator/Dump`
@@ -24,6 +25,8 @@ BepInEx/
       Text/
         interface.csv
         ui-pack.zip
+      Sprite/
+        caution_ja.png
     Text/
       common.jsonl
       text-pack.zip
@@ -36,13 +39,13 @@ BepInEx/
       Texture/
 ```
 
-NET follows JAT's module directory layout without the target-language layer. The UI module recursively reads `.csv` files only under `UI/Text`; general text reads `.jsonl` only under `Text`; textures are indexed only under `Texture`. These are actual loading boundaries, not merely suggested organization. Files or ZIP packs placed directly in the translation root are not loaded, and `Dump` is never scanned for translations.
+NET follows JAT's module directory layout without the target-language layer. It recursively reads UI CSV files from `UI/Text`, UI sprite images from `UI/Sprite`, general-text JSONL from `Text`, and whole-texture images from `Texture`. Files and archives must be in their corresponding resource directory, and `Dump` is never scanned for translations.
 
 When migrating the old layout, move UI CSV files into `UI/Text`, general-text JSONL files into `Text`, and rename `Textures` to `Texture`. Place ZIP packs inside the corresponding text module's directory; there is no compatibility scan of the old shared root.
 
 General text does not read `.txt`. There are no target-language subdirectories or language-selection options: a pack directly supplies the translations to display.
 
-Both text modules can read matching entries directly from ZIP archives in their own directories without extracting them to disk. Nested ZIP archives are not expanded. The texture module currently indexes loose PNG / JPG / JPEG images under `Texture` only, not images inside ZIP archives.
+Both text modules can read matching entries directly from ZIP archives in their own directories without extracting them to disk. Nested ZIP archives are not expanded. Image replacements use loose PNG / JPG / JPEG files in their respective directories.
 
 ## 2. Loading Order and Overrides
 
@@ -430,7 +433,17 @@ If a rule does not work or produces unexpected output, check in this order:
 
 Choose a **.NET** engine in external regex tools. Validate the JSON-decoded pattern first, then check the actual JSONL. Other engines may have incompatible syntax, replacement references, or options.
 
-## 5. Texture Replacement Resources
+## 5. Image Replacement Resources
+
+### Individual UI Sprites
+
+`3UI/EnableUISpriteReplace/启用UI精灵图替换` is enabled by default and has its own switch. Place a loose PNG, JPG or JPEG in `UI/Sprite`. The filename matches `Sprite.name` case-insensitively. For example, `UI/Sprite/caution_ja.png` replaces the sprite named `caution_ja`. Later files with the same name override earlier ones. [Loading order](#2-loading-order-and-overrides)
+
+This covers uGUI `Image.sprite`, `Image.overrideSprite`, and serialized prefab sprites on activation. Each replacement has its own texture, so a single atlas entry can be replaced. Use the original sprite's dimensions or aspect ratio to preserve its native layout. When both image catalogs match an `Image.sprite` assignment, the UI sprite replacement is tried first. Whole-texture replacement can still apply when the game loads the source asset.
+
+Reloading applies the new UI sprites to images already on screen. Disabling the switch or reloading an empty `UI/Sprite` directory restores the original sprite references. The existing texture dump exports whole textures.
+
+### Whole Textures
 
 Place PNG / JPG / JPEG files in `Texture` or its subdirectories.
 
@@ -440,13 +453,13 @@ Place PNG / JPG / JPEG files in `Texture` or its subdirectories.
 - Only a path index is stored; files are read on a hit and image contents are not cached.
 - On a hit, `ImageConversion.LoadImage` replaces the texture pixels before `GameResource.LoadAsset<Sprite>` returns and whenever uGUI assigns `Image.sprite`, preserving the original sprite's pivot, borders, and reference counting. Each texture instance is processed once.
 - Prefab-serialized images never pass through the setter, so `MaskableGraphic.OnEnable` reassigns `sprite` once to trigger the replacement.
-- Sprites that are atlas sub-rects (`sprite.rect` smaller than the texture), non-`Texture2D` textures, and dimension mismatches are skipped or reported, so other atlas entries are never overwritten. Asynchronous loads (`LoadAssetAsync`) are not hooked yet.
+- The whole-texture hook skips atlas sub-rects and unsupported texture types. It reports changed dimensions. Use `UI/Sprite` for individual atlas entries shown in uGUI. Asynchronous loads (`LoadAssetAsync`) are not hooked by the whole-texture module.
 
 `TextureReplaceManager.TryGetReplacement(textureName, out byte[] data)` returns encoded image data, or `false` when no replacement is found; `HasReplacement` only queries the index. Replacement itself is applied by the sprite load hook described above. See [module architecture](ModuleArchitecture.md).
 
 ## 6. Module Switches and Reloading
 
-- Each module has an `Enabled/启用` switch in its respective `3UI`, `4Text`, or `5Textures` configuration section.
+- `3UI/Enabled` controls I2 text, and `3UI/EnableUISpriteReplace` controls UI sprites. `4Text/Enabled` controls general text and `5Textures/Enabled` controls whole textures.
 - Changing a switch, regex timeout, or ZIP loading order triggers resource reloading on the main thread.
 - Configure the `ReloadTranslateResource` shortcut to reload manually. It is unbound by default and triggers only once per key press.
 - File changes are not watched automatically. Trigger a reload after editing translation files.
