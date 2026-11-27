@@ -1,62 +1,218 @@
 [English](#english) | [简体中文](#简体中文)
 
+[![GitHub Downloads](https://img.shields.io/github/downloads/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin/total)](https://github.com/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin/releases)
+
 # CRC3D3.NotEnoughTranslator.Plugin
 
 ## English
 
 NotEnoughTranslator (NET) is a BepInEx 5 translation plugin for CRC3D3.
 
-NET hooks I2 queries, KAG dialogue and choices, TMP and uGUI text, and sprite loading. General-text translation packs can scope entries to a script location or a UI component. Translation data is supplied separately.
+To report a problem, set `LogLevel/日志等级` to `Debug` in the plugin configuration, restart the game, reproduce the issue, and attach `BepInEx/LogOutput.log` to your report. [GitHub Issues](https://github.com/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin/issues)
 
-NET keeps the game's language state unchanged. It does not add languages or provide JAT-style translation-language selection.
+### Highlights of NET
 
-Under `BepInEx/NotEnoughTranslator`, resources use JAT's layout: UI terms in `UI/Text`, individual UI sprites in `UI/Sprite`, general text in `Text`, and whole textures in `Texture`. Dumps are written under `Dump`.
+**Dedicated UI translation**
 
-Optional XUAT interop uses JAT-style translation decisions, without adding or detecting special markers. See the [interop boundaries](Document/English/TranslationGuide.md#8-xuat-interoperability).
+- Translates the game's I2 Localization terms directly and keeps the current game language in effect.
+- Replaces individual uGUI sprites by name, including sprites packed into a texture atlas.
+
+**General text translation**
+
+- Covers KAG dialogue, speaker names and choices, as well as text displayed through TextMesh Pro and uGUI.
+- Supports exact matches and regular expressions. Use the script location or the UI component to give the same source text different translations.
+
+**Texture replacement**
+
+- Replaces whole textures by name. Text and image features can be enabled independently.
+
+**Background loading**
+
+- Loads UI and general text translations in the background.
+
+### Getting Started
+
+#### Prerequisites
+
+- Install **BepInEx 5** in your CRC3D3 game directory. [BepInEx](https://github.com/BepInEx/BepInEx)
+- To change settings in game, you can install the BepInEx 5 version of ConfigurationManager. Its default hotkey is `F1`. [BepInEx.ConfigurationManager](https://github.com/BepInEx/BepInEx.ConfigurationManager)
+
+#### Installation Steps
+
+1. Download `CRC3D3.NotEnoughTranslator.Plugin-<version>.zip`. [GitHub Releases](https://github.com/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin/releases)
+2. Extract the archive into the CRC3D3 game directory and merge the included `BepInEx` folder with the existing one. The DLL goes in `BepInEx/plugins/CRC3D3.NotEnoughTranslator.Plugin.dll`.
+
+#### Initial Setup
+
+Launch the game once. NET creates its configuration file and resource folders under `BepInEx`.
+
+```text
+CRC3D3/  (game directory)
+└─ BepInEx/
+   ├─ plugins/
+   │  └─ CRC3D3.NotEnoughTranslator.Plugin.dll
+   ├─ config/
+   │  └─ Github.MeidoPromotionAssociation.CRC3D3.NotEnoughTranslator.Plugin.cfg
+   └─ NotEnoughTranslator/
+      ├─ UI/
+      │  ├─ Text/
+      │  └─ Sprite/
+      ├─ Text/
+      ├─ Texture/
+      └─ Dump/
+         ├─ UI/
+         │  ├─ Text/
+         │  └─ Sprite/
+         ├─ Text/
+         └─ Texture/
+```
+
+### Installing Translation Files
+
+**Obtain a CRC3D3 translation pack separately.** If it already contains `UI`, `Text`, or `Texture` folders, merge them directly into `BepInEx/NotEnoughTranslator/`. The translation files determine which language is displayed.
+
+| Folder | Files to put there |
+| --- | --- |
+| `UI/Text/` | UI terms in CSV files, either loose or in ZIP archives |
+| `UI/Sprite/` | PNG, JPG, or JPEG files named after individual UI sprites |
+| `Text/` | General text translations in JSONL files, either loose or in ZIP archives |
+| `Texture/` | PNG, JPG, or JPEG files named after whole textures |
+
+### How NET Reads Translation Files
+
+NET reads the files in each resource folder before scanning its subfolders. It sorts subfolders by path and files within each folder by name, using ordinal order. If multiple entries use the same key and context, the last valid entry wins. For example, put a translation pack in `01-Base` and your overrides in `99-PersonalFixes` under the same resource folder.
+
+### Dumping Game Resources
+
+All dump options are off by default. Enable the ones you need under `[6Dump]` in the plugin configuration.
+
+| Setting | Output folder | Exported files |
+| --- | --- | --- |
+| `EnableTermDump` | `Dump/UI/Text/` | CSV with I2 text terms encountered in game that have no NET translation |
+| `EnableTextDump` | `Dump/Text/` | JSONL with untranslated general text and any available context |
+| `EnableSpriteDump` | `Dump/UI/Sprite/` | Individual uGUI sprites without an applied replacement, including atlas entries, as PNGs |
+| `EnableTexturesDump` | `Dump/Texture/` | PNGs of whole textures encountered by the texture module that have no matching replacement |
+
+Keep `EnableUISpriteReplace` enabled under `[3UI]` when dumping sprites. [Dump options and output files](Document/English/TranslationGuide.md#dumping-untranslated-resources)
+
+### Frequently Asked Questions
+
+- **How do I apply changes to translation files?** Restart the game or set and press the `ReloadTranslateResource` hotkey under `[2General]`. The hotkey is unbound by default.
+- **Can I use XUnity.AutoTranslator alongside NET?** Yes. With the default settings, XUnity.AutoTranslator skips translations that NET has applied and registered, and can still process other text. [XUAT interoperability](Document/English/TranslationGuide.md#8-xuat-interoperability)
 
 ### Documentation
 
-- [Modules and architecture](Document/English/ModuleArchitecture.md): module boundaries, I2 behavior, lifecycle, integration APIs, and building.
-- [Translation and resource guide](Document/English/TranslationGuide.md): directories, CSV / JSONL formats, regex rules, textures, and reloading.
+- Resource formats, load order, regex rules, image replacement, and dumps. [Translation and Resource Guide](Document/English/TranslationGuide.md)
+- Module boundaries, hooks, lifecycle, and developer APIs. [Module Architecture](Document/English/ModuleArchitecture.md)
 
-### Releasing
-
-1. Bump `PluginVersion` in [CRC3D3.NotEnoughTranslator.Plugin.cs](CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin.cs). The assembly version is derived from that constant.
-2. Push a matching tag: `git tag v0.0.2 && git push origin v0.0.2`.
-
-The `Release` workflow then builds, packages `CRC3D3.NotEnoughTranslator.Plugin-<version>.zip` (dll, README and `Document/`) and publishes the release. A tag that does not match `PluginVersion` fails the build instead of shipping a wrong version, and a tag containing a hyphen (`v0.1.0-rc1`) is published as a prerelease. Hand-written notes at `.github/release-notes/<tag>.md` take precedence over the generated template.
-
-
-<br>
-<br>
-<br>
 <br>
 
 ---
 
-<br>
-<br>
-<br>
 <br>
 
 ## 简体中文
 
-NotEnoughTranslator（NET）是 CRC3D3 的 BepInEx 5 翻译插件。
+NotEnoughTranslator，简称 NET，是面向 CRC3D3 的 BepInEx 5 翻译插件。
 
-本插件不附带翻译数据，请自行从别处获取。
+反馈问题前，请在插件配置中将 `LogLevel/日志等级` 设为 `Debug`，重启游戏并复现问题，提交时附上 `BepInEx/LogOutput.log`。
 
-NET 已接入 I2 查询、KAG 对白和选项、TMP 和 uGUI 文本，以及精灵资源加载。通用文本词条可按剧本位置或界面组件匹配。
+欢迎加入 Custom Maid Server! Discord 频道： [https://discord.gg/custommaid](https://discord.gg/custommaid)
 
-NET 保持游戏原有语言状态，不新增语言，也不提供 JAT 式的译文语言选择（这个设计不好，原本是想分发语言文件的，但是）
+### NET 的亮点
 
-`BepInEx/NotEnoughTranslator` 下的 `UI/Text` 存放 UI 词条，`UI/Sprite` 存放单张 UI 精灵替换图，`Text` 存放通用文本，`Texture` 存放整张纹理的替换图。导出文件写入 `Dump`。
+**独立的 UI 翻译**
 
-自动与 [XUnity.AutoTranslator](https://github.com/bbepis/XUnity.AutoTranslator) 集成，被 NET 翻译过的 内容不会再被 XUAT 翻译，不添加或检测特殊标记。具体能力边界见 [XUAT 互操作说明](Document/简体中文_SimplifiedChinese/翻译指南.md#8-xuat-互操作)。
+- 直接翻译游戏通过 I2 Localization 查询的 UI 词条，保留游戏当前的语言设置。
+- 支持按名称替换单张 uGUI 精灵图，包括图集中的子图。
+
+**通用文本翻译**
+
+- 覆盖 KAG 剧情对白、说话人名和选项，以及 TextMesh Pro 和 uGUI 显示的文字。
+- 支持带上下文的精确匹配和正则表达式。同一句原文可以按剧本位置或界面组件指定不同的译文。
+
+**整张纹理替换**
+
+- 支持按名称替换整张纹理。文本和图片相关功能可以独立开关。
+
+**后台加载**
+
+- 在后台线程加载 UI 和通用文本翻译，不会影响游戏加载速度。
+
+### 入门
+
+#### 前置需求
+
+- 在 CRC3D3 游戏目录安装 **BepInEx 5**。[BepInEx](https://github.com/BepInEx/BepInEx)
+- 如果想在游戏内修改配置，可安装适用于 BepInEx 5 的配置管理器，默认用 `F1` 打开。[BepInEx.ConfigurationManager](https://github.com/BepInEx/BepInEx.ConfigurationManager)
+
+#### 安装步骤
+
+1. 下载 `CRC3D3.NotEnoughTranslator.Plugin-<version>.zip`。[GitHub Releases](https://github.com/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin/releases)
+2. 解压到 CRC3D3 游戏目录，将压缩包里的 `BepInEx` 文件夹与现有文件夹合并。安装后的 DLL 路径为 `BepInEx/plugins/CRC3D3.NotEnoughTranslator.Plugin.dll`。
+
+#### 首次启动
+
+安装后启动一次游戏，NET 会在 `BepInEx` 下创建配置文件和资源目录。
+
+```text
+CRC3D3/  （游戏目录）
+└─ BepInEx/
+   ├─ plugins/
+   │  └─ CRC3D3.NotEnoughTranslator.Plugin.dll
+   ├─ config/
+   │  └─ Github.MeidoPromotionAssociation.CRC3D3.NotEnoughTranslator.Plugin.cfg
+   └─ NotEnoughTranslator/
+      ├─ UI/
+      │  ├─ Text/
+      │  └─ Sprite/
+      ├─ Text/
+      ├─ Texture/
+      └─ Dump/
+         ├─ UI/
+         │  ├─ Text/
+         │  └─ Sprite/
+         ├─ Text/
+         └─ Texture/
+```
+
+### 安装翻译文件
+
+**请另行获取 CRC3D3 翻译包。** 如果翻译包已经包含 `UI`、`Text` 或 `Texture` 文件夹，直接合并到 `BepInEx/NotEnoughTranslator/`。实际显示的译文语言由翻译文件决定。
+
+| 目录 | 放入的文件 |
+| --- | --- |
+| `UI/Text/` | UI 词条 CSV，支持单独文件和 ZIP 压缩包 |
+| `UI/Sprite/` | 按单张 UI 精灵名称命名的 PNG、JPG 或 JPEG |
+| `Text/` | 通用文本 JSONL，支持单独文件和 ZIP 压缩包 |
+| `Texture/` | 按整张纹理名称命名的 PNG、JPG 或 JPEG |
+
+### NET 如何读取翻译文件
+
+NET 先读取各资源目录中的直属文件，再扫描子目录。子目录按路径排序，同一目录内的文件按文件名排序，均使用 Ordinal 顺序。键和语境相同的词条重复出现时，以最后加载的有效条目为准。例如，可以在同一个资源目录下把基础翻译包放进 `01-Base`，把自己的修订放进 `99-PersonalFixes`。
+
+### 导出游戏资源
+
+导出选项默认关闭，需要时在插件配置的 `[6Dump]` 中启用。
+
+| 开关 | 输出目录 | 导出的文件 |
+| --- | --- | --- |
+| `EnableTermDump` | `Dump/UI/Text/` | 游戏中查询过且没有 NET 译文的 I2 文本词条 CSV |
+| `EnableTextDump` | `Dump/Text/` | 未翻译的通用文本 JSONL，包含可用的语境信息 |
+| `EnableSpriteDump` | `Dump/UI/Sprite/` | 未替换的单张 uGUI 精灵图 PNG，包含图集子图 |
+| `EnableTexturesDump` | `Dump/Texture/` | 纹理模块遇到且没有匹配替换图的原始整张纹理 PNG |
+
+导出精灵图时，请保持 `[3UI]` 的 `EnableUISpriteReplace` 开启。[导出配置与文件说明](Document/简体中文_SimplifiedChinese/翻译指南.md#未翻译资源导出)
+
+### 常见问题
+
+- **修改翻译文件后怎么生效？** 重启游戏，或在 `[2General]` 中设置 `ReloadTranslateResource` 快捷键后按下。该快捷键默认未绑定。
+- **可以和 XUnity.AutoTranslator 一起用吗？** 可以。默认设置下，XUnity.AutoTranslator 会跳过 NET 已应用并登记的译文，其余文本仍可交给它翻译。[XUAT 互操作说明](Document/简体中文_SimplifiedChinese/翻译指南.md#8-xuat-互操作)
 
 ### 文档
 
-- [模块架构](Document/简体中文_SimplifiedChinese/模块架构.md)：模块边界、I2 行为、生命周期、接入接口与构建。
-- [翻译与资源指南](Document/简体中文_SimplifiedChinese/翻译指南.md)：目录、CSV / JSONL 格式、正则规则、纹理与重载。
+- 资源格式、加载顺序、正则规则、图片替换和资源导出。[翻译与资源指南](Document/简体中文_SimplifiedChinese/翻译指南.md)
+- 模块边界、Hook、生命周期和开发接口。[模块架构](Document/简体中文_SimplifiedChinese/模块架构.md)
 
 <br>
 <br>
@@ -74,17 +230,22 @@ NET 保持游戏原有语言状态，不新增语言，也不提供 JAT 式的�
 <br>
 <br>
 
-### Building
 
-Target: .NET Framework 4.8 / Unity 2022.3 / BepInEx 5. The build needs few assemblies shipped with CRC3D3, placed in `lib` at the repository root.
+## Building and Releasing
 
-```
+The plugin targets .NET Framework 4.8, Unity 2022.3, and BepInEx 5. Place the required CRC3D3 assemblies in `lib/` at the repository root. [Assembly list](Document/English/ModuleArchitecture.md#9-building)
+
+```powershell
 dotnet build CRC3D3.NotEnoughTranslator.Plugin/CRC3D3.NotEnoughTranslator.Plugin.csproj -c Release
 ```
 
-Output: `CRC3D3.NotEnoughTranslator.Plugin/bin/Release/net48/CRC3D3.NotEnoughTranslator.Plugin.dll`.
+Build output / 构建产物
 
-`lib` is git-ignored. CI downloads the required assemblies, including `Unity.TextMeshPro.dll`, from the private repository using `GAME_LIBS_TOKEN`. The repository keeps one directory per game version. `GAME_LIBS_VERSION` can override the default version, and `GAME_LIBS_REPO` / `GAME_LIBS_REF` can override the repository and ref. [fetch_game_libs.sh](.github/scripts/fetch_game_libs.sh)
+`CRC3D3.NotEnoughTranslator.Plugin/bin/Release/net48/CRC3D3.NotEnoughTranslator.Plugin.dll`
+
+To publish a release, update `PluginVersion` in the main plugin class, commit the update, and push the matching tag. For example, version `0.0.2` uses tag `v0.0.2`. The Release workflow builds and publishes the ZIP. A file at `.github/release-notes/<tag>.md` takes precedence over the generated release notes.
+
+CI uses `GAME_LIBS_TOKEN` to fetch the required assemblies. Set `GAME_LIBS_VERSION` to choose the game version, or use `GAME_LIBS_REPO` and `GAME_LIBS_REF` to override the library source. [Library download script](https://github.com/MeidoPromotionAssociation/CRC3D3.NotEnoughTranslator.Plugin/blob/main/.github/scripts/fetch_game_libs.sh)
 
 <br>
 

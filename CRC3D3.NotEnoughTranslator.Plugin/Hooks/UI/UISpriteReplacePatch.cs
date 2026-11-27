@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using CRC3D3.NotEnoughTranslator.Plugin.Hooks.Texture;
+using CRC3D3.NotEnoughTranslator.Plugin.Manger;
 using CRC3D3.NotEnoughTranslator.Plugin.Translation;
 using CRC3D3.NotEnoughTranslator.Plugin.Utils;
 using HarmonyLib;
@@ -11,8 +12,8 @@ using Object = UnityEngine.Object;
 namespace CRC3D3.NotEnoughTranslator.Plugin.Hooks.UI;
 
 /// <summary>
-/// 按精灵名为 uGUI Image 创建独立的替换 Sprite，在 Unity 主线程管理其生命周期。
-/// Build standalone replacement sprites by name for uGUI Images and manage their lifetime on Unity's main thread.
+/// 在 Unity 主线程为 uGUI Image 替换或导出单张精灵图。
+/// Replace or dump individual sprites for uGUI Images on Unity's main thread.
 /// </summary>
 internal static class UISpriteReplacePatch
 {
@@ -26,7 +27,9 @@ internal static class UISpriteReplacePatch
     private static readonly Dictionary<Sprite, Sprite> Replacements = new();
     private static readonly Dictionary<Sprite, (Sprite Original, Texture2D Texture)> Originals = new();
     private static readonly HashSet<string> ReportedNames = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> DumpAttempts = new(StringComparer.OrdinalIgnoreCase);
     private static TextureReplacementCatalog _catalog = TextureReplacementCatalog.Empty;
+    private static bool _dumpEnabled;
     private static AccessTools.FieldRef<Image, Sprite> _overrideSprite;
     private static Harmony _harmony;
 
@@ -37,12 +40,13 @@ internal static class UISpriteReplacePatch
     internal static bool IsReplacement(Sprite sprite) => !ReferenceEquals(sprite, null) && Originals.ContainsKey(sprite);
 
     /// <summary>
-    /// 发布新的图片索引，先还原旧代精灵，再刷新当前活动的 Image。
-    /// Publish a new image index, restoring previous sprites before refreshing active Images.
+    /// 发布图片索引和导出状态，先还原旧精灵，再处理当前活动的 Image。
+    /// Publish the image index and dump state, restoring previous sprites before processing active Images.
     /// </summary>
     internal static void ApplyCatalog(TextureReplacementCatalog catalog)
     {
-        if (catalog.Count == 0)
+        var dumpEnabled = NotEnoughTranslator.EnableSpriteDump.Value;
+        if (catalog.Count == 0 && !dumpEnabled)
         {
             Unload();
             return;
@@ -51,10 +55,12 @@ internal static class UISpriteReplacePatch
 
         RestoreOriginals();
         _catalog = catalog;
+        _dumpEnabled = dumpEnabled;
         foreach (var image in Object.FindObjectsByType<Image>(FindObjectsSortMode.None))
             if (image.isActiveAndEnabled) RefreshImage(image);
 
-        LogManager.Info($"[UI/Sprite] Indexed/已索引 {catalog.Count} replacement sprites/替换精灵图");
+        if (catalog.Count != 0)
+            LogManager.Info($"[UI/Sprite] Indexed/已索引 {catalog.Count} replacement sprites/替换精灵图");
     }
 
     /// <summary>
@@ -102,14 +108,14 @@ internal static class UISpriteReplacePatch
     }
 
     /// <summary>
-    /// 在 uGUI 保存精灵引用之前应用按名称匹配的替换图。
-    /// Apply the name-matched replacement before uGUI stores the sprite reference.
+    /// 在 uGUI 保存引用前处理单张精灵图的替换与导出。
+    /// Process sprite replacement and dumping before uGUI stores the reference.
     /// </summary>
     private static void SpritePrefix(ref Sprite __0) => __0 = Resolve(__0);
 
     /// <summary>
-    /// 应用精灵替换到现有的普通和覆盖槽位，保留空的覆盖槽位。
-    /// Apply replacements to the existing base and override slots, preserving an unset override.
+    /// 处理普通和覆盖槽位里的精灵，保留空的覆盖槽位。
+    /// Process sprites in the base and override slots, preserving an unset override.
     /// </summary>
     private static void RefreshImage(Image __instance)
     {
@@ -130,12 +136,12 @@ internal static class UISpriteReplacePatch
     }
 
     /// <summary>
-    /// 返回已生成或新解码的精灵，查找或生成失败时保留传入的精灵。
-    /// Return a cached or newly decoded sprite, keeping the input if lookup or creation fails.
+    /// 返回已生成或新解码的精灵，未替换时按配置尝试导出。
+    /// Return a cached or newly decoded sprite, or try to dump the original on a miss.
     /// </summary>
     private static Sprite Resolve(Sprite original)
     {
-        if (_catalog.Count == 0 || original == null || IsReplacement(original)) return original;
+        if ((_catalog.Count == 0 && !_dumpEnabled) || original == null || IsReplacement(original)) return original;
         if (Replacements.TryGetValue(original, out var replacement)) return replacement;
 
         var name = original.name;
@@ -147,6 +153,10 @@ internal static class UISpriteReplacePatch
         {
             Report(name, $"cannot create replacement/无法生成替换精灵: {exception.Message}");
         }
+
+        if (_dumpEnabled && original.texture != null && !string.IsNullOrWhiteSpace(name) &&
+            DumpAttempts.Add(name))
+            DumpManager.DumpSprite(name, () => SpritePngEncoder.Encode(original));
 
         return original;
     }
@@ -201,7 +211,9 @@ internal static class UISpriteReplacePatch
     private static void RestoreOriginals()
     {
         _catalog = TextureReplacementCatalog.Empty;
+        _dumpEnabled = false;
         ReportedNames.Clear();
+        DumpAttempts.Clear();
         Replacements.Clear();
         if (Originals.Count == 0) return;
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using BepInEx.Configuration;
 using CRC3D3.NotEnoughTranslator.Plugin.Translation;
 using CRC3D3.NotEnoughTranslator.Plugin.Utils;
 using Newtonsoft.Json;
@@ -27,8 +28,8 @@ public static class DumpManager
     private static bool _initialized;
 
     /// <summary>
-    /// 创建 JAT 式导出目录和本次运行的文件名，保留并优先重试上次未写入的缓冲。
-    /// Create JAT-style dump directories and session filenames, retrying any previously unwritten buffers first.
+    /// 创建导出目录和本次运行的文件名，保留并优先重试上次未写入的缓冲。
+    /// Create dump directories and session filenames, retrying any previously unwritten buffers first.
     /// </summary>
     public static void Init()
     {
@@ -45,7 +46,7 @@ public static class DumpManager
             foreach (var directory in new[]
                      {
                          NotEnoughTranslator.TermDumpPath, NotEnoughTranslator.TextDumpPath,
-                         NotEnoughTranslator.TextureDumpPath
+                         NotEnoughTranslator.SpriteDumpPath, NotEnoughTranslator.TextureDumpPath
                      })
             {
                 try
@@ -140,24 +141,40 @@ public static class DumpManager
     /// <param name="textureName">纹理名称或路径，使用与替换索引相同的文件名规则 / A texture name or path, normalized with the replacement catalog's filename rules.</param>
     /// <param name="pngData">已在合适线程完成编码的原图 PNG 数据 / Original PNG data already encoded on an appropriate thread.</param>
     /// <returns>新文件写入成功时为 true；未启用、输入无效、文件已存在或失败时为 false / True for a newly written file; false if disabled, invalid, already present, or unsuccessful.</returns>
-    public static bool DumpTexture(string textureName, byte[] pngData)
+    public static bool DumpTexture(string textureName, byte[] pngData) =>
+        DumpPng(NotEnoughTranslator.EnableTexturesDump, NotEnoughTranslator.TextureDumpPath, textureName, () => pngData);
+
+    /// <summary>
+    /// 确认没有同名导出文件后编码单张 UI 精灵图，并按替换图的命名规则写入。
+    /// Encode a UI sprite after checking for an existing dump, and save it using the replacement image naming rules.
+    /// </summary>
+    internal static bool DumpSprite(string spriteName, Func<byte[]> encodePng) =>
+        DumpPng(NotEnoughTranslator.EnableSpriteDump, NotEnoughTranslator.SpriteDumpPath, spriteName, encodePng);
+
+    /// <summary>
+    /// 验证导出文件名，在锁外准备 PNG，再原子写入，避免覆盖已有文件。
+    /// Validate the filename, prepare the PNG outside the lock, then write atomically without overwriting files.
+    /// </summary>
+    private static bool DumpPng(ConfigEntry<bool> enabled, string directory, string name, Func<byte[]> encodePng)
     {
-        lock (SyncRoot)
+        if (enabled?.Value != true || string.IsNullOrWhiteSpace(name)) return false;
+
+        try
         {
-            if (!_initialized || !NotEnoughTranslator.EnableTexturesDump.Value ||
-                string.IsNullOrWhiteSpace(textureName) || !HasPngSignature(pngData)) return false;
+            var fileName = TextureReplacementCatalog.GetKey(name);
+            if (string.IsNullOrWhiteSpace(fileName) || fileName == "." || fileName == ".." ||
+                fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
 
-            try
+            var filePath = Path.Combine(directory, fileName + ".png");
+            if (File.Exists(filePath)) return false;
+            var pngData = encodePng();
+            if (!HasPngSignature(pngData)) return false;
+
+            lock (SyncRoot)
             {
-                var fileName = TextureReplacementCatalog.GetKey(textureName);
-                if (string.IsNullOrWhiteSpace(fileName) || fileName == "." || fileName == ".." ||
-                    fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
-
-                var filePath = Path.Combine(NotEnoughTranslator.TextureDumpPath, fileName + ".png");
-                if (File.Exists(filePath)) return false;
-                Directory.CreateDirectory(NotEnoughTranslator.TextureDumpPath);
-                var temporaryPath = Path.Combine(NotEnoughTranslator.TextureDumpPath,
-                    Guid.NewGuid().ToString("N") + ".tmp");
+                if (!_initialized || !enabled.Value || File.Exists(filePath)) return false;
+                Directory.CreateDirectory(directory);
+                var temporaryPath = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
                 try
                 {
                     File.WriteAllBytes(temporaryPath, pngData);
@@ -169,11 +186,11 @@ public static class DumpManager
                     if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
                 }
             }
-            catch (Exception exception)
-            {
-                LogManager.Error($"[Dump] Cannot write texture/无法导出纹理 {textureName}: {exception.Message}");
-                return false;
-            }
+        }
+        catch (Exception exception)
+        {
+            LogManager.Error($"[Dump] Cannot export PNG/无法导出 PNG {directory}/{name}: {exception.Message}");
+            return false;
         }
     }
 

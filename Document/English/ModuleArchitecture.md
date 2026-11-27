@@ -8,7 +8,7 @@ This document describes the current foundation for plugin development and integr
 
 | Module | Implemented | Not yet connected or verified |
 | --- | --- | --- |
-| UI | I2 CSV terms and refresh, single-sprite replacement in uGUI Images including atlas entries | In-game UI coverage and font adaptation |
+| UI | I2 CSV terms and refresh, replacement and dumping of individual uGUI sprites including atlas entries | In-game UI coverage and font adaptation |
 | General text | JSONL loading, KAG and UI contextual exact matching, regex replacement, query API, KAG tags, TMP and uGUI display hooks, legacy TextMesh scene and fishing UI hooks | In-game coverage and XUAT interaction |
 | Texture replacement | PNG / JPG / JPEG indexing, reading data by texture name, in-place replacement at the sprite load entry and on uGUI image assignment, original dumps on a miss, reload and unload | Atlas sub-rects, non-Texture2D textures, and asynchronous load paths |
 
@@ -145,6 +145,7 @@ All three expose `IsLoaded`, `IsLoading`, `EntryCount`, and `IsHookInstalled`. T
 | `UITranslateManager.DumpTerm(term, original)` | Export a missing I2 term after a snapshot is published, including during the first forced UI refresh |
 | `DumpManager.DumpTerm(term, original)` | Buffer a caller-confirmed untranslated term as a CSV template |
 | `DumpManager.DumpText(original)` | Buffer caller-confirmed untranslated general text as a JSONL template |
+| `DumpManager.DumpSprite(spriteName, encodePng)` | Encode and write a single UI sprite on demand if its dump file is absent |
 | `DumpManager.DumpTexture(textureName, pngData)` | Write an original PNG using the replacement catalog's filename key, without overwriting existing files; called by the texture patch on a miss |
 | `DumpManager.Flush()` | Flush both text buffers and report whether all writes succeeded |
 

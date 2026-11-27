@@ -71,6 +71,12 @@ public class NotEnoughTranslator : BaseUnityPlugin
     public static readonly string TermDumpPath = Path.Combine(DumpUIPath, "Text");
 
     /// <summary>
+    /// 单张 UI 精灵图的 PNG 导出目录。
+    /// The PNG dump directory for individual UI sprites.
+    /// </summary>
+    public static readonly string SpriteDumpPath = Path.Combine(DumpUIPath, "Sprite");
+
+    /// <summary>
     /// 未翻译通用文本的 JSONL 导出目录。
     /// The JSONL dump directory for untranslated general text.
     /// </summary>
@@ -93,6 +99,7 @@ public class NotEnoughTranslator : BaseUnityPlugin
     public static ConfigEntry<bool> EnableXUATInterop;
     public static ConfigEntry<bool> EnableTermDump;
     public static ConfigEntry<bool> EnableTextDump;
+    public static ConfigEntry<bool> EnableSpriteDump;
     public static ConfigEntry<bool> EnableTexturesDump;
     public static ConfigEntry<int> TermDumpThreshold;
     public static ConfigEntry<int> TextDumpThreshold;
@@ -135,8 +142,10 @@ public class NotEnoughTranslator : BaseUnityPlugin
             "Dump untranslated I2 terms while the UI module is loaded/在 UI 模块加载后导出未翻译的 I2 词条");
         EnableTextDump = Config.Bind("6Dump", "EnableTextDump/启用通用文本导出", false,
             "Dump untranslated general-text queries as JSONL/将通用文本查询未命中的原文导出为 JSONL");
+        EnableSpriteDump = Config.Bind("6Dump", "EnableSpriteDump/启用 UI 精灵图导出", false,
+            "Dump UI sprites without a replacement as individual PNGs/将未替换的 UI 精灵图单独导出为 PNG");
         EnableTexturesDump = Config.Bind("6Dump", "EnableTexturesDump/启用纹理导出", false,
-            "Allow captured original PNG data to be dumped; capture hooks are not yet connected/允许导出已捕获的原始 PNG 数据，捕获 Hook 尚未接入");
+            "Dump whole textures without a replacement as PNGs/将未替换的整张纹理导出为 PNG");
         TermDumpThreshold = Config.Bind("6Dump", "TermDumpThreshold/UI 词条导出阈值", 100,
             new ConfigDescription("Flush after buffering this many new I2 terms/累计此数量的新 I2 词条后写入文件",
                 new AcceptableValueRange<int>(1, 10000)));
@@ -149,6 +158,7 @@ public class NotEnoughTranslator : BaseUnityPlugin
         AllowFilesInZipLoadInOrder.SettingChanged += OnResourceSettingsChanged;
         EnableUITranslation.SettingChanged += OnResourceSettingsChanged;
         EnableUISpriteReplace.SettingChanged += OnResourceSettingsChanged;
+        EnableSpriteDump.SettingChanged += OnResourceSettingsChanged;
         EnableTextTranslation.SettingChanged += OnResourceSettingsChanged;
         EnableTextureReplacement.SettingChanged += OnResourceSettingsChanged;
         RegexTimeoutMilliseconds.SettingChanged += OnResourceSettingsChanged;
@@ -199,6 +209,8 @@ public class NotEnoughTranslator : BaseUnityPlugin
             EnableUITranslation.SettingChanged -= OnResourceSettingsChanged;
         if (EnableUISpriteReplace != null)
             EnableUISpriteReplace.SettingChanged -= OnResourceSettingsChanged;
+        if (EnableSpriteDump != null)
+            EnableSpriteDump.SettingChanged -= OnResourceSettingsChanged;
         if (EnableTextTranslation != null)
             EnableTextTranslation.SettingChanged -= OnResourceSettingsChanged;
         if (EnableTextureReplacement != null)

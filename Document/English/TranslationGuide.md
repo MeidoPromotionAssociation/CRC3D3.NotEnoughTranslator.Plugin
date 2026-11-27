@@ -35,6 +35,7 @@ BepInEx/
     Dump/
       UI/
         Text/
+        Sprite/
       Text/
       Texture/
 ```
@@ -458,7 +459,7 @@ Choose a **.NET** engine in external regex tools. Validate the JSON-decoded patt
 
 This covers uGUI `Image.sprite`, `Image.overrideSprite`, and serialized prefab sprites on activation. Each replacement has its own texture, so a single atlas entry can be replaced. Use the original sprite's dimensions or aspect ratio to preserve its native layout. When both image catalogs match an `Image.sprite` assignment, the UI sprite replacement is tried first. Whole-texture replacement can still apply when the game loads the source asset.
 
-Reloading applies the new UI sprites to images already on screen. Disabling the switch or reloading an empty `UI/Sprite` directory restores the original sprite references. The existing texture dump exports whole textures.
+Reloading applies the new UI sprites to images already on screen. Disabling the switch or reloading an empty `UI/Sprite` directory restores the original sprite references.
 
 ### Whole Textures
 
@@ -487,15 +488,16 @@ UI reloading forces an I2 refresh. A general-text reload looks up the original t
 
 ### Dumping Untranslated Resources
 
-The plugin creates `Dump/UI/Text`, `Dump/Text`, and `Dump/Texture` at startup. Dumping is opt-in through the `6Dump` section; all three dump switches are disabled by default.
+The plugin creates `Dump/UI/Text`, `Dump/UI/Sprite`, `Dump/Text`, and `Dump/Texture` at startup. All dump switches under `[6Dump]` are off by default.
 
 - `EnableTermDump`: after the first UI snapshot is published, untranslated text-term queries produce CSV records with `Term,Original,Translation`. `Original` is the game's returned display text and `Translation` starts empty. Non-text terms and explicit-language queries are excluded. The UI module must remain enabled; triggering a resource reload can capture another localization pass for currently displayed UI.
 - `EnableTextDump` exports misses after general-text resources load. UI entries are deduplicated by source text and all available `context.ui` fields. Scenario entries use source text and all available `context.kag` fields. Keep the fields that distinguish a translation to let an entry cover several locations. Dictionary-only probes do not trigger dumps.
+- `EnableSpriteDump` exports uGUI sprites without an applied UI replacement to `Dump/UI/Sprite`. Keep `[3UI]`'s `EnableUISpriteReplace` on, even when `UI/Sprite` is empty. NET checks active images when resources load or reload and captures sprites as images are enabled or assigned. It reconstructs rotated or tightly packed atlas entries at the sprite's original size with transparency. Existing PNGs are preserved.
 - `EnableTexturesDump`: when a sprite loads without a matching replacement, its original texture is encoded as PNG into `Dump/Texture` (unreadable textures are copied through a temporary RenderTexture first). Each name is attempted once per run; existing files are not overwritten, and incomplete temporary writes are not published as PNG files. This dumps only sprites that actually load, not the whole game.
 - UI terms and general text are deduplicated separately with Ordinal matching for the plugin session. Hot reloads do not reset these records. CSV quoting and JSON escaping preserve commas, quotes, backslashes, and line breaks; there is no normalized TXT copy.
 - `TermDumpThreshold` and `TextDumpThreshold` each default to `100`. Reaching a threshold, pressing the optional `FlushDump` shortcut, changing dump settings, reloading resources, or shutting down the plugin flushes buffered records. There is no periodic or per-frame flush. Failed writes retain their buffers for a later explicit retry; a process crash can still lose unwritten records.
 
-CSV and JSONL dumps use separate timestamped session files. Fill in their empty translation fields, then place the completed files under `UI/Text` or `Text` and reload. PNG dumps belong under `Texture` after editing. Leaving files under `Dump` never activates them as translation resources.
+CSV and JSONL dumps use separate timestamped session files. Fill in their empty translation fields, then place the completed files under `UI/Text` or `Text` and reload. After editing PNGs, place individual sprites under `UI/Sprite` and whole textures under `Texture`.
 
 ## 7. Examples and Limitations
 
