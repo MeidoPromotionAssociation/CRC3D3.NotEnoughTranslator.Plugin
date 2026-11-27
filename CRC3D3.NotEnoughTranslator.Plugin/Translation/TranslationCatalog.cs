@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CRC3D3.NotEnoughTranslator.Plugin.Translation;
 
@@ -13,9 +14,11 @@ public sealed class TranslationCatalog
         Array.Empty<RegexTranslationRule>());
 
     private readonly Dictionary<string, string> _translations;
+    private readonly Dictionary<string, (KagTextContext Context, string Text)[]> _kagTranslations;
+    private readonly int _kagExactCount;
     private readonly RegexTranslationRule[] _rules;
 
-    public int ExactCount => _translations.Count;
+    public int ExactCount => _translations.Count + _kagExactCount;
     public int RegexCount => _rules.Length;
 
     /// <summary>
@@ -26,9 +29,49 @@ public sealed class TranslationCatalog
     /// <param name="rules">按加载顺序提供的正则规则 / Regex rules supplied in loading order.</param>
     public TranslationCatalog(IDictionary<string, string> translations,
         IEnumerable<RegexTranslationRule> rules)
+        : this(translations, rules, null)
+    {
+    }
+
+    /// <summary>
+    /// 复制通用精确词条、KAG 语境词条和正则规则，创建独立的查询快照。
+    /// Copy general exact entries, KAG contextual entries, and regex rules into a separate lookup snapshot.
+    /// </summary>
+    internal TranslationCatalog(IDictionary<string, string> translations,
+        IEnumerable<RegexTranslationRule> rules,
+        IDictionary<(KagTextContext Context, string Original), string> kagTranslations)
     {
         _translations = new Dictionary<string, string>(translations, StringComparer.Ordinal);
         _rules = new List<RegexTranslationRule>(rules).ToArray();
+        if (kagTranslations == null || kagTranslations.Count == 0) return;
+
+        _kagExactCount = kagTranslations.Count;
+        _kagTranslations = kagTranslations.GroupBy(entry => entry.Key.Original, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(entry => entry.Key.Context.Priority)
+                    .Select(entry => (entry.Key.Context, entry.Value)).ToArray(),
+                StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// 对同一原文按已排序的优先级检查 KAG 条件，未命中时回退到通用词库。
+    /// Check the source text's KAG conditions in priority order and fall back to the general catalog on a miss.
+    /// </summary>
+    internal bool TryGetTranslation(string sourceText, KagTextContext kagContext, out string translation)
+    {
+        if (_kagTranslations == null || kagContext.IsEmpty || string.IsNullOrEmpty(sourceText) ||
+            !_kagTranslations.TryGetValue(sourceText, out var candidates))
+            return TryGetTranslation(sourceText, out translation);
+
+        foreach (var candidate in candidates)
+        {
+            if (!candidate.Context.Matches(kagContext)) continue;
+            translation = candidate.Text;
+            return true;
+        }
+
+        return TryGetTranslation(sourceText, out translation);
     }
 
     /// <summary>

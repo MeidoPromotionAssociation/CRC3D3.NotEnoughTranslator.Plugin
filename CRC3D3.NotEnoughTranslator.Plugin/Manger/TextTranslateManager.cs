@@ -63,13 +63,25 @@ public static class TextTranslateManager
         translation = null;
         if (XUATInterop.IsInstalled &&
             (IsNetTranslatedText(sourceText) || UITranslateManager.IsNetTranslatedText(sourceText))) return false;
-        if (!_catalog.TryGetTranslation(sourceText, out translation))
-        {
-            if (IsLoaded && NotEnoughTranslator.EnableTextDump.Value) DumpManager.DumpText(sourceText);
-            return false;
-        }
+        if (!TryGetOriginalTranslation(sourceText, out translation)) return false;
         MarkTranslated(translation);
         return true;
+    }
+
+    /// <summary>
+    /// 查询已知原文并按配置导出未命中项，由调用方登记译文。
+    /// Look up known source text and optionally dump misses, leaving the caller to record translated output.
+    /// </summary>
+    /// <param name="sourceText">待翻译的已知原文 / The known source text to translate.</param>
+    /// <param name="translation">命中时返回的译文 / The translation returned on a match.</param>
+    /// <param name="kagContext">可选的 KAG 剧情语境 / The optional KAG scenario context.</param>
+    /// <returns>词库命中时为 true / True if the catalog matches.</returns>
+    internal static bool TryGetOriginalTranslation(string sourceText, out string translation,
+        KagTextContext kagContext = default)
+    {
+        if (_catalog.TryGetTranslation(sourceText, kagContext, out translation)) return true;
+        if (IsLoaded && NotEnoughTranslator.EnableTextDump.Value) DumpManager.DumpText(sourceText, kagContext);
+        return false;
     }
 
     /// <summary>
@@ -98,7 +110,7 @@ public static class TextTranslateManager
     /// XUAT 互操作启用时登记通用文本译文，避免再次翻译。
     /// Record general-text translations while XUAT interop is active to prevent retranslation.
     /// </summary>
-    /// <param name="text">已返回或由显示 Hook 处理后的最终译文 / The returned translation or final output processed by a display hook.</param>
+    /// <param name="text">已应用的译文或经过游戏处理的显示文本 / The applied translation or game-processed display text.</param>
     public static void MarkTranslated(string text)
     {
         if (XUATInterop.IsInstalled) TranslatedTexts.Add(text);
@@ -147,7 +159,8 @@ public static class TextTranslateManager
     /// <param name="result">成功完成的通用文本加载结果 / The successfully loaded general-text resources.</param>
     private static void ApplyResult(TranslationLoadResult result)
     {
-        _catalog = new TranslationCatalog(result.TextTranslations, result.TextRegexTranslations);
+        _catalog = new TranslationCatalog(result.TextTranslations, result.TextRegexTranslations,
+            result.KagTextTranslations);
         TranslatedTexts.Clear();
         LogManager.Info($"[Text] Loaded/已加载 {ExactCount} exact, {RegexCount} regex, " +
                         $"{result.SkippedLines} skipped, {result.ElapsedMilliseconds} ms");

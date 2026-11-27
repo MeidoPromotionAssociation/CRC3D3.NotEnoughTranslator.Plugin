@@ -18,7 +18,7 @@ public static class DumpManager
 {
     private static readonly object SyncRoot = new();
     private static readonly HashSet<string> DumpedTerms = new(StringComparer.Ordinal);
-    private static readonly HashSet<string> DumpedTexts = new(StringComparer.Ordinal);
+    private static readonly HashSet<(KagTextContext Context, string Original)> DumpedTexts = new();
     private static readonly List<string> TermDumpBuffer = new();
     private static readonly List<string> TextDumpBuffer = new();
     private static readonly byte[] PngSignature = { 137, 80, 78, 71, 13, 10, 26, 10 };
@@ -88,13 +88,37 @@ public static class DumpManager
     /// <param name="original">调用方已确认未翻译的通用文本 / General text confirmed untranslated by the caller.</param>
     public static void DumpText(string original)
     {
+        DumpText(original, default);
+    }
+
+    /// <summary>
+    /// 按原文与可用的 KAG 语境去重，并写入词库可读取的 JSONL 模板。
+    /// Deduplicate by source text and available KAG context, and serialize a JSONL template that the catalog can read.
+    /// </summary>
+    internal static void DumpText(string original, KagTextContext kagContext)
+    {
         lock (SyncRoot)
         {
             if (!_initialized || !NotEnoughTranslator.EnableTextDump.Value ||
-                string.IsNullOrWhiteSpace(original) || !DumpedTexts.Add(original)) return;
+                string.IsNullOrWhiteSpace(original) ||
+                !DumpedTexts.Add((kagContext, original))) return;
 
             var record = new JObject { ["original"] = original, ["text"] = string.Empty };
-            TextDumpBuffer.Add(record.ToString(Formatting.None));
+            if (!kagContext.IsEmpty)
+            {
+                var kag = new JObject();
+                if (kagContext.Filename != null) kag["filename"] = kagContext.Filename;
+                if (kagContext.Label != null) kag["label"] = kagContext.Label;
+                if (kagContext.Speaker != null) kag["speaker"] = kagContext.Speaker;
+                if (kagContext.Voice != null) kag["voice"] = kagContext.Voice;
+                if (kagContext.Target != null) kag["target"] = kagContext.Target;
+                if (kagContext.Line is int line) kag["line"] = line;
+                record["context"] = new JObject { ["kag"] = kag };
+            }
+
+            // 显式选择游戏内置 Newtonsoft.Json 支持的重载。
+            // Select the overload supported by the game's bundled Newtonsoft.Json.
+            TextDumpBuffer.Add(record.ToString(Formatting.None, Array.Empty<JsonConverter>()));
             if (TextDumpBuffer.Count >= NotEnoughTranslator.TextDumpThreshold.Value)
                 FlushBuffer(TextDumpBuffer, _textDumpFilePath, null);
         }

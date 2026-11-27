@@ -8,6 +8,7 @@ public sealed class TranslationLoadResult
 {
     public readonly Dictionary<string, string> I2Terms = new(StringComparer.Ordinal);
     public readonly Dictionary<string, string> TextTranslations = new(StringComparer.Ordinal);
+    internal readonly Dictionary<(KagTextContext Context, string Original), string> KagTextTranslations = new();
     public readonly List<RegexTranslationRule> TextRegexTranslations = new();
 
     public long ElapsedMilliseconds;
@@ -15,5 +16,6 @@ public sealed class TranslationLoadResult
     public int TotalEntries;
     public int TotalFiles;
 
-    public bool HasAnyEntry => I2Terms.Count + TextTranslations.Count + TextRegexTranslations.Count > 0;
+    public bool HasAnyEntry => I2Terms.Count + TextTranslations.Count + KagTextTranslations.Count +
+                               TextRegexTranslations.Count > 0;
 }

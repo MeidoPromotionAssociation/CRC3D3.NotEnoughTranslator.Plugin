@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -64,7 +65,17 @@ public sealed class JsonlTranslationFileProcessor : ITranslationFileProcessor
                 if (string.IsNullOrEmpty(original))
                     throw new JsonException("'original' must not be empty.");
 
-                if (regexToken?.Value<bool>() == true)
+                var kagToken = (record["context"] as JObject)?["kag"];
+                if (kagToken != null)
+                {
+                    if (regexToken?.Value<bool>() == true)
+                        throw new JsonException("'context.kag' supports exact translations only.");
+
+                    var kag = ReadKagContext(kagToken);
+                    if (string.IsNullOrWhiteSpace(text)) continue;
+                    result.KagTextTranslations[(kag, original)] = text;
+                }
+                else if (regexToken?.Value<bool>() == true)
                     result.TextRegexTranslations.Add(new RegexTranslationRule(original, text, _regexTimeout, location));
                 else
                 {
@@ -82,6 +93,48 @@ public sealed class JsonlTranslationFileProcessor : ITranslationFileProcessor
         }
 
         return entriesCount;
+    }
+
+    /// <summary>
+    /// 读取 KAG 匹配条件并验证字段类型，保留游戏提供的原始值。
+    /// Read KAG matching conditions, validating their types and preserving raw game values.
+    /// </summary>
+    private static KagTextContext ReadKagContext(JToken token)
+    {
+        if (token is not JObject kag) throw new JsonException("'context.kag' must be an object.");
+
+        int? line = null;
+        var lineToken = kag["line"];
+        if (lineToken != null)
+        {
+            if (lineToken.Type != JTokenType.Integer || !int.TryParse(lineToken.ToString(), NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var lineNumber))
+                throw new JsonException("'context.kag.line' must be a non-negative 32-bit integer.");
+            line = lineNumber;
+        }
+
+        var context = new KagTextContext(ReadKagString(kag, "filename"), ReadKagString(kag, "label", allowEmpty: true),
+            ReadKagString(kag, "speaker"), ReadKagString(kag, "voice"), ReadKagString(kag, "target"), line);
+        if (context.IsEmpty) throw new JsonException("'context.kag' requires at least one matching field.");
+        return context;
+    }
+
+    /// <summary>
+    /// 读取可选的 KAG 字符串字段，字段存在时校验类型和空值。
+    /// Read an optional KAG string, validating its type and empty value when present.
+    /// </summary>
+    private static string ReadKagString(JObject kag, string field, bool allowEmpty = false)
+    {
+        var token = kag[field];
+        if (token == null) return null;
+        if (token.Type == JTokenType.String)
+        {
+            var value = token.Value<string>();
+            if (allowEmpty || !string.IsNullOrWhiteSpace(value)) return value;
+        }
+
+        var expected = allowEmpty ? "a string" : "a non-blank string";
+        throw new JsonException($"'context.kag.{field}' must be {expected}.");
     }
 
     /// <summary>

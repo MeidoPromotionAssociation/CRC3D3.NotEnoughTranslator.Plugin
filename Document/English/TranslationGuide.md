@@ -4,7 +4,7 @@
 
 This document covers NET's resource directories, formats, matching rules, and reloading. See [module architecture](ModuleArchitecture.md) for implementation status and development APIs.
 
-**Current status: foundation stage.** UI has an I2 query hook; general text is connected to the system-message queue entry; texture replacement is connected to the sprite load entry. The remaining text entries are not yet connected to specific game display hooks. Successfully loading resources does not mean translations or replacement images are already displayed in the game.
+UI translations apply through I2 lookups. General text covers system messages, ADV dialogue, speaker names, and choices. Texture replacement applies when sprites load.
 
 ## 1. Resource Directories
 
@@ -100,6 +100,7 @@ Each UTF-8 line contains one JSON object:
 | `original` | Required, non-empty string | Exact source text or regex pattern |
 | `text` | Required string | Translation or regex replacement string |
 | `regex` | Optional boolean | `true` selects regex; omitted or `false` selects exact matching |
+| `context.kag` | Optional object | Scope an exact entry to a KAG context |
 
 General text JSONL requires `original`; `term` is not an alias. The UI CSV `Term` column is unchanged.
 
@@ -107,7 +108,62 @@ NET does not use JAT's TXT files, a leading `$` regex marker, or custom multilin
 
 ### 4.1 Exact Matching
 
-Source strings use Ordinal, case-sensitive exact matching. They are not trimmed or implicitly normalized. Blank translations are ignored.
+The catalog uses ordinal, case-sensitive exact matching on the source strings it receives. Blank translations are ignored.
+
+Use any combination of the following `context.kag` fields to scope dialogue, speaker names, or choices. String fields are case-sensitive and use values from the game's dump records. Omit `context` for a general entry.
+
+| Field | Game data it matches |
+| --- | --- |
+| `filename` | Current script filename |
+| `label` | Current KAG label. Use `""` for an unlabeled location |
+| `speaker` | Raw dialogue speaker, such as `[SF]` from `@talk name=[SF]` |
+| `voice` | Dialogue voice filename, including the `.ogg` suffix used by the game |
+| `target` | Choice jump destination, such as `*choices_1` from `@ChoicesSet label="*choices_1"` |
+| `line` | Non-negative `currentLine` when `@hitret` or `@ChoicesSet` runs. Copy the dumped value. Script edits can shift it |
+
+**Match priority**
+
+1. Consider KAG entries for the same `original`. Every field specified by an entry must match the current context. Omitted fields add no condition.
+2. Prefer the entry with more matching fields. For equal field counts, compare whether each entry specifies `filename`, `label`, `voice`, `target`, `speaker`, and `line`, in that order. At the first difference, the entry specifying that field wins. The last loaded translation wins for identical source text and conditions.
+3. On a KAG miss, try the general exact entry and then general regex rules.
+
+An entry with `filename` and `label` takes priority over one with `filename` alone. If both entries specify `filename` and `label`, the one adding `voice` wins over the one adding `line` when both match. Existing filename and label entries retain their order of both fields, filename only, then label only.
+
+```jsonl
+{"original":"そうですね。","text":"是啊。"}
+{"original":"そうですね。","text":"您说得对。","context":{"kag":{"filename":"scene_01.ks","label":"first_meeting"}}}
+{"original":"そうですね。","text":"没错。","context":{"kag":{"filename":"scene_01.ks"}}}
+{"original":"そうですね。","text":"我也这么想。","context":{"kag":{"label":"discussion"}}}
+```
+
+ADV text follows the game's trimming rules. Keep character-name placeholders in `original` and write script line breaks `|` as `\n`. An entry containing both `context.kag` and `regex: true` is skipped as invalid.
+
+#### Writing JSONL Entries from KAG Scripts
+
+In this excerpt from `a3_freeexplore_0012.ks`, `@talk name=[SF]` sets the speaker. Use the dialogue before `@hitret` as `original` and keep `[HF]` in the translation so the game can expand it to the character's name.
+
+```text
+*L13|
+@talk name=[SF]
+俺も[HF]と同じタイプだから、つい一緒にね。
+@hitret
+```
+
+The following choice appears in both `a3_freeexplore_0012.ks` and `a3_freeexplore_0012repeat.ks`. Use the `text` attribute as `original`. The `label="*choices_1"` attribute specifies where the script jumps when the player selects the choice.
+
+```text
+@ChoicesSet label="*choices_1" text="キャンペーン商品ってつい見ちゃうね。"
+```
+
+Use `context.kag.filename` to give the same choice different translations in the two scripts.
+
+```jsonl
+{"original":"俺も[HF]と同じタイプだから、つい一緒にね。","text":"我跟[HF]是同一类人嘛，一不留神就陪你一起挑了。","context":{"kag":{"filename":"a3_freeexplore_0012.ks","speaker":"[SF]"}}}
+{"original":"キャンペーン商品ってつい見ちゃうね。","text":"看到促销商品，总会忍不住瞧一眼呢。","context":{"kag":{"filename":"a3_freeexplore_0012.ks","target":"*choices_1"}}}
+{"original":"キャンペーン商品ってつい見ちゃうね。","text":"每次看到促销商品，都还是会忍不住多看两眼呢。","context":{"kag":{"filename":"a3_freeexplore_0012repeat.ks"}}}
+```
+
+To scope an entry to a location within a script, copy `context.kag.label` from its `EnableTextDump` record. The value is the current label when `@hitret` or `@ChoicesSet` runs.
 
 ### 4.2 Regex Replacement
 
@@ -377,7 +433,7 @@ UI reloading forces an I2 refresh. After a general-text reload, newly queued sys
 The plugin creates `Dump/UI/Text`, `Dump/Text`, and `Dump/Texture` at startup. Dumping is opt-in through the `6Dump` section; all three dump switches are disabled by default.
 
 - `EnableTermDump`: after the first UI snapshot is published, untranslated text-term queries produce CSV records with `Term,Original,Translation`. `Original` is the game's returned display text and `Translation` starts empty. Non-text terms and explicit-language queries are excluded. The UI module must remain enabled; triggering a resource reload can capture another localization pass for currently displayed UI.
-- `EnableTextDump`: misses from the loaded general-text query API produce JSONL records such as `{"original":"source text","text":""}`. Dictionary-only probes do not dump. Game-text capture currently covers only the system-message queue; the remaining entries still depend on display hooks to be integrated.
+- `EnableTextDump` exports misses after general-text resources load. System messages are deduplicated by source text. Dialogue and choices are deduplicated by source text and all available `context.kag` fields. Keep the fields that distinguish a translation to let an entry cover other locations. Dictionary-only probes do not trigger dumps.
 - `EnableTexturesDump`: when a sprite loads without a matching replacement, its original texture is encoded as PNG into `Dump/Texture` (unreadable textures are copied through a temporary RenderTexture first). Each name is attempted once per run; existing files are not overwritten, and incomplete temporary writes are not published as PNG files. This dumps only sprites that actually load, not the whole game.
 - UI terms and general text are deduplicated separately with Ordinal matching for the plugin session. Hot reloads do not reset these records. CSV quoting and JSON escaping preserve commas, quotes, backslashes, and line breaks; there is no normalized TXT copy.
 - `TermDumpThreshold` and `TextDumpThreshold` each default to `100`. Reaching a threshold, pressing the optional `FlushDump` shortcut, changing dump settings, reloading resources, or shutting down the plugin flushes buffered records. There is no periodic or per-frame flush. Failed writes retain their buffers for a later explicit retry; a process crash can still lose unwritten records.
