@@ -195,6 +195,23 @@ The paths below are examples. The button uses one translation, the tab uses anot
 
 Instances with identical names at the same hierarchy location share a path. Keep the escaping from the dump if an object name contains a literal slash or backslash. An exact entry may specify one context kind. Entries combining `context.kag` and `context.ui`, or a context and `regex: true`, are skipped. I2 handles its own localized writes. Scenario dialogue, speaker names, choices, and backlog text use the KAG entries. Editable input keeps the game's value, and placeholders can be translated as ordinary labels.
 
+#### Preserving Source Text with Exact Entries
+
+The game sometimes reads display text to determine state or look up data. When text must stay as written, add an exact entry and copy `original` into `text`, including whitespace, case, and markers. The exact match returns the original text before general regex rules run. Use `context.ui.path` to limit the entry to a specific control.
+
+For example, the romance menu's play-flow and notification toggles read `　ON` and `　OFF` from their labels, including the full-width space. Add an exact entry for each state of each button.
+
+(Whoever wrote this **** code deserves to go to hell)
+
+```jsonl
+{"original":"通知\u3000ON","text":"通知\u3000ON","context":{"ui":{"path":"Canvas/RomanceMenu/Notification/Label"}}}
+{"original":"通知\u3000OFF","text":"通知\u3000OFF","context":{"ui":{"path":"Canvas/RomanceMenu/Notification/Label"}}}
+```
+
+Replace the sample text and path with the values captured by `EnableTextDump`. In JSON, `\u3000` represents a full-width space.
+
+NET will treat entries with the same original and text as a successful, accurate translation.
+
 ### 4.2 Regex Replacement
 
 A regex rule uses two distinct kinds of syntax:
