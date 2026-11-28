@@ -22,7 +22,7 @@ set -euo pipefail
 
 # ── 要编的游戏版本：对应私有仓库里的子目录名 ─────────────────────────────
 # ── Game version to build against: the subdirectory name in the private repo ──
-DEFAULT_VERSION="demo3"
+DEFAULT_VERSION="1.0.1"
 
 # 私有仓库、分支和落盘位置，一般不用改 / Private repo, ref and destination, rarely changed
 REPO="${GAME_LIBS_REPO:-MeidoPromotionAssociation/CRC3D3.GameLibs}"
