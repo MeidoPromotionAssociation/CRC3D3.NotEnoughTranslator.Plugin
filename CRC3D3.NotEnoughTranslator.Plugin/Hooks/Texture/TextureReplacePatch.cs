@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using CRC3D3.NotEnoughTranslator.Plugin.Hooks.UI;
 using CRC3D3.NotEnoughTranslator.Plugin.Manger;
 using CRC3D3.NotEnoughTranslator.Plugin.Translation;
@@ -30,14 +29,16 @@ internal static class TextureReplacePatch
     private static readonly HashSet<string> DumpedKeys = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 分别注册泛型资源加载与 uGUI 入口，供管理器按同一个 ID 卸载。
-    /// Register the generic resource loader and uGUI entries separately under one owner ID.
+    /// 挂接同步 AssetBundle 和 uGUI 入口，避开 Mono 共享的泛型加载方法体。
+    /// Hook synchronous AssetBundle loads and uGUI entries without patching Mono's shared generic loader body.
     /// </summary>
     internal static Harmony Install()
     {
         var harmony = new Harmony(HarmonyId);
-        harmony.Patch(FindSpriteLoader(),
-            postfix: new HarmonyMethod(typeof(TextureReplacePatch), nameof(LoadAssetPostfix)));
+        var loadAsset = AccessTools.DeclaredMethod(typeof(AssetBundle), nameof(AssetBundle.LoadAsset),
+            new[] { typeof(string), typeof(Type) });
+        harmony.Patch(loadAsset,
+            postfix: new HarmonyMethod(typeof(TextureReplacePatch), nameof(BundleAssetPostfix)));
         harmony.Patch(AccessTools.PropertySetter(typeof(Image), nameof(Image.sprite)),
             prefix: new HarmonyMethod(typeof(TextureReplacePatch), nameof(ImageSpritePrefix)));
         harmony.Patch(AccessTools.DeclaredMethod(typeof(MaskableGraphic), "OnEnable"),
@@ -46,35 +47,15 @@ internal static class TextureReplacePatch
     }
 
     /// <summary>
-    /// 定位 <c>GameResource.LoadAsset&lt;Sprite&gt;(string)</c>；泛型参数无法写进特性构造参数，只能运行时构造。
-    /// Locate <c>GameResource.LoadAsset&lt;Sprite&gt;(string)</c>; generic arguments cannot appear in an attribute argument, so it is constructed at runtime.
+    /// 在已成功按精灵类型加载的资源上替换纹理，未命中时按配置导出原图。
+    /// Replace textures for successful sprite requests and dump originals on a miss when enabled.
     /// </summary>
-    /// <returns>已构造的泛型方法 / The constructed generic method.</returns>
-    /// <exception cref="MissingMethodException">签名不匹配时抛出，由管理器回滚 / Thrown on a signature mismatch so the manager can roll back.</exception>
-    private static MethodBase FindSpriteLoader()
+    /// <param name="__0">AssetBundle 内的资源名 / The asset name within the AssetBundle.</param>
+    /// <param name="__1">加载时显式指定的类型 / The explicitly requested asset type.</param>
+    /// <param name="__result">同步加载返回的对象 / The object returned by the synchronous load.</param>
+    private static void BundleAssetPostfix(string __0, Type __1, UnityEngine.Object __result)
     {
-        foreach (var method in typeof(GameResource).GetMethods(BindingFlags.Public | BindingFlags.Static))
-        {
-            if (method.Name != nameof(GameResource.LoadAsset) || !method.IsGenericMethodDefinition ||
-                method.GetGenericArguments().Length != 1) continue;
-            var parameters = method.GetParameters();
-            if (parameters.Length != 1 || parameters[0].ParameterType != typeof(string)) continue;
-            return method.MakeGenericMethod(typeof(Sprite));
-        }
-
-        throw new MissingMethodException(
-            "[Texture] GameResource.LoadAsset<Sprite> unavailable; texture hooks skipped/未找到精灵资源加载入口，跳过纹理补丁");
-    }
-
-    /// <summary>
-    /// 在资源返回后替换纹理像素，未命中替换图时按配置导出原图。
-    /// Replace texture pixels after the asset returns, dumping the original on a miss when enabled.
-    /// </summary>
-    /// <param name="__0">按位置绑定的资源名 / The asset name, bound by position.</param>
-    /// <param name="__result">加载结果，泛型共享代码也可能返回其他资源 / The loaded object, which may be another asset type under generic code sharing.</param>
-    private static void LoadAssetPostfix(string __0, UnityEngine.Object __result)
-    {
-        if (__result is not Sprite sprite || sprite == null) return;
+        if (__1 != typeof(Sprite) || __result is not Sprite sprite || sprite == null) return;
         try
         {
             Apply(sprite, __0, true);

@@ -63,7 +63,7 @@ Text: JSONL / ZIP
 Images under Texture
   -> TextureReplacementCatalog path index
   -> TextureReplaceManager
-  -> TextureReplacePatch (GameResource.LoadAsset<Sprite> / Image.sprite)
+  -> TextureReplacePatch (AssetBundle.LoadAsset(string, Type) / Image.sprite)
 ```
 
 The two text modules share loading infrastructure, but keep their resource channels and consumers separate. `TranslationCatalog` handles exact and regex queries; `ResourceModule<T>` manages loading tasks and publishes results on the main thread.

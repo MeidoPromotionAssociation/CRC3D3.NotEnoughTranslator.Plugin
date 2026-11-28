@@ -469,7 +469,7 @@ Place PNG / JPG / JPEG files in `Texture` or its subdirectories.
 - For example, `button`, `button.tex`, and `button.png` can all query a replacement file named `button.png`.
 - A later file with the same name overrides an earlier one and produces a warning. Subdirectories do not create separate texture namespaces.
 - Only a path index is stored; files are read on a hit and image contents are not cached.
-- On a hit, `ImageConversion.LoadImage` replaces the texture pixels before `GameResource.LoadAsset<Sprite>` returns and whenever uGUI assigns `Image.sprite`, preserving the original sprite's pivot, borders, and reference counting. Each texture instance is processed once.
+- On a hit, `ImageConversion.LoadImage` replaces the texture pixels after a successful synchronous `AssetBundle.LoadAsset(string, Type)` request for a Sprite or when uGUI assigns `Image.sprite`. The sprite retains its pivot, borders, and reference counting. Each texture instance is processed once.
 - Prefab-serialized images never pass through the setter, so `MaskableGraphic.OnEnable` reassigns `sprite` once to trigger the replacement.
 - The whole-texture hook skips atlas sub-rects and unsupported texture types. It reports changed dimensions. Use `UI/Sprite` for individual atlas entries shown in uGUI. Asynchronous loads (`LoadAssetAsync`) are not hooked by the whole-texture module.
 
