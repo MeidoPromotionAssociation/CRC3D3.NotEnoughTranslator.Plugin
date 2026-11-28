@@ -14,7 +14,7 @@ public class NotEnoughTranslator : BaseUnityPlugin
 {
     public const string PluginGuid = "Github.MeidoPromotionAssociation.CRC3D3.NotEnoughTranslator.Plugin";
     public const string PluginName = "CRC3D3.NotEnoughTranslator.Plugin";
-    public const string PluginVersion = "0.0.1";
+    public const string PluginVersion = "0.0.2";
 
     /// <summary>
     /// 翻译资源与导出数据的公共根目录，不包含语言层级。
