@@ -10,7 +10,7 @@ Requirements: BepInEx 5.x. Nothing else has to be installed alongside it.
 
 # Usage
 
-See the [README](https://github.com/{{REPO}}/blob/main/README.md) for the full documentation, and the translation guide under `Document/` for the CSV / JSONL formats and regex rules.
+See the [README](https://github.com/{{REPO}}/blob/main/README.md) for the full documentation, and the translation guide under `BepInEx/NotEnoughTranslator/Document文档/` for the CSV / JSONL formats and regex rules.
 
 # Changes
 
@@ -32,7 +32,7 @@ CRC3D3/BepInEx/plugins/CRC3D3.NotEnoughTranslator.Plugin.dll
 
 # 使用
 
-完整说明见 [README](https://github.com/{{REPO}}/blob/main/README.md)，CSV / JSONL 格式与正则规则见 `Document/` 下的翻译指南。
+完整说明见 [README](https://github.com/{{REPO}}/blob/main/README.md)，CSV / JSONL 格式与正则规则见 `BepInEx/NotEnoughTranslator/Document文档/` 下的翻译指南。
 
 # 更改
 
