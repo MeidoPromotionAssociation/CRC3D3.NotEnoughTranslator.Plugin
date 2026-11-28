@@ -162,8 +162,7 @@ public static class DumpManager
         try
         {
             var fileName = TextureReplacementCatalog.GetKey(name);
-            if (string.IsNullOrWhiteSpace(fileName) || fileName == "." || fileName == ".." ||
-                fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
+            if (fileName == null) return false;
 
             var filePath = Path.Combine(directory, fileName + ".png");
             if (File.Exists(filePath)) return false;

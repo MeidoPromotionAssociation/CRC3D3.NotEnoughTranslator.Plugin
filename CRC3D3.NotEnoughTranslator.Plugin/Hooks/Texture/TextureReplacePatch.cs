@@ -28,6 +28,8 @@ internal static class TextureReplacePatch
     private static readonly HashSet<string> ReportedKeys = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DumpedKeys = new(StringComparer.OrdinalIgnoreCase);
 
+    private static bool HasWork => TextureReplaceManager.EntryCount != 0 || NotEnoughTranslator.EnableTexturesDump.Value;
+
     /// <summary>
     /// 挂接同步 AssetBundle 和 uGUI 入口，避开 Mono 共享的泛型加载方法体。
     /// Hook synchronous AssetBundle loads and uGUI entries without patching Mono's shared generic loader body.
@@ -91,7 +93,7 @@ internal static class TextureReplacePatch
     /// <param name="__instance">被激活的图形组件 / The graphic component being enabled.</param>
     private static void GraphicOnEnablePrefix(MaskableGraphic __instance)
     {
-        if (!(__instance is Image image)) return;
+        if (!HasWork || __instance is not Image image) return;
         var sprite = image.sprite;
         if (sprite == null) return;
 
@@ -122,7 +124,7 @@ internal static class TextureReplacePatch
     /// <param name="reportSkip">跳过原因是否写入日志；UI 赋值路径会大量命中图集子图，不重复告警 / Whether to log skip reasons; the UI path hits atlas sub-rects often and stays quiet.</param>
     private static void Apply(Sprite sprite, string nameHint, bool reportSkip)
     {
-        if (UISpriteReplacePatch.IsReplacement(sprite)) return;
+        if (!HasWork || UISpriteReplacePatch.IsReplacement(sprite)) return;
         var texture = sprite.texture;
         if (texture == null) return;
         var wholeTexture = IsWholeTexture(sprite, texture);
@@ -130,7 +132,8 @@ internal static class TextureReplacePatch
         var key = FindReplacementKey(nameHint, sprite.name, texture.name);
         if (key == null)
         {
-            if (wholeTexture) DumpOriginal(texture, nameHint ?? sprite.name ?? texture.name);
+            if (wholeTexture && NotEnoughTranslator.EnableTexturesDump.Value)
+                DumpOriginal(texture, nameHint, sprite.name, texture.name);
             return;
         }
 
@@ -193,21 +196,24 @@ internal static class TextureReplacePatch
     }
 
     /// <summary>
-    /// 导出启用时把未命中的原图编码为 PNG 交给导出设施，同一名称只尝试一次。
-    /// When dumping is enabled, encode and hand the missing original to the dump infrastructure once per name.
+    /// 使用第一个可用的资源名称导出原图，同一键只尝试一次。
+    /// Dump the original using the first usable asset name, attempting each key once.
     /// </summary>
     /// <param name="texture">未找到替换图的原始纹理 / The original texture with no replacement.</param>
-    /// <param name="textureName">用于导出文件名的纹理名称 / The texture name used for the dump filename.</param>
-    private static void DumpOriginal(UnityEngine.Texture texture, string textureName)
+    /// <param name="candidates">按优先级排列的候选文件名 / Candidate filenames in priority order.</param>
+    private static void DumpOriginal(UnityEngine.Texture texture, params string[] candidates)
     {
-        if (!NotEnoughTranslator.EnableTexturesDump.Value || string.IsNullOrWhiteSpace(textureName)) return;
+        foreach (var candidate in candidates)
+        {
+            var key = TextureReplacementCatalog.GetKey(candidate);
+            if (key == null) continue;
+            lock (SyncRoot)
+                if (!DumpedKeys.Add(key)) return;
 
-        var key = TextureReplacementCatalog.GetKey(textureName);
-        lock (SyncRoot)
-            if (!DumpedKeys.Add(key)) return;
-
-        var png = EncodePng(texture);
-        if (png != null) DumpManager.DumpTexture(key, png);
+            var png = EncodePng(texture);
+            if (png != null) DumpManager.DumpTexture(candidate, png);
+            return;
+        }
     }
 
     /// <summary>

@@ -12,6 +12,8 @@ namespace CRC3D3.NotEnoughTranslator.Plugin.Translation;
 /// </summary>
 internal sealed class TextureReplacementCatalog
 {
+    private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
+
     public static readonly TextureReplacementCatalog Empty = new(
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
 
@@ -45,6 +47,7 @@ internal sealed class TextureReplacementCatalog
         {
             cancellationToken.ThrowIfCancellationRequested();
             var key = GetKey(path);
+            if (key == null) continue;
             if (paths.ContainsKey(key))
                 LogManager.Warning($"[Texture] Duplicate name, later file wins/纹理重名，后加载文件覆盖: {key}: {path}");
             paths[key] = path;
@@ -62,7 +65,8 @@ internal sealed class TextureReplacementCatalog
     /// <returns>索引中存在该名称时为 true / True when the name exists in the index.</returns>
     public bool Contains(string textureName)
     {
-        return !string.IsNullOrWhiteSpace(textureName) && _paths.ContainsKey(GetKey(textureName));
+        var key = _paths.Count == 0 ? null : GetKey(textureName);
+        return key != null && _paths.ContainsKey(key);
     }
 
     /// <summary>
@@ -75,47 +79,43 @@ internal sealed class TextureReplacementCatalog
     public bool TryGetBytes(string textureName, out byte[] data)
     {
         data = null;
-        if (string.IsNullOrWhiteSpace(textureName)) return false;
+        var key = _paths.Count == 0 ? null : GetKey(textureName);
+        if (key == null || !_paths.TryGetValue(key, out var path)) return false;
 
         try
         {
-            var key = GetKey(textureName);
-            if (!_paths.TryGetValue(key, out var path)) return false;
-
-            try
-            {
-                data = File.ReadAllBytes(path);
-                if (data.Length == 0) throw new InvalidDataException("Empty texture file.");
-            }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
-            {
-                data = null;
-                LogManager.Warning($"[Texture] Cannot read replacement/无法读取替换纹理 {path}: {exception.Message}");
-            }
-
-            return data != null;
+            var bytes = File.ReadAllBytes(path);
+            if (bytes.Length == 0) throw new InvalidDataException("Empty texture file.");
+            data = bytes;
+            return true;
         }
-        catch (ArgumentException)
+        catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException ||
+                                          exception is ArgumentException)
         {
+            LogManager.Warning($"[Texture] Cannot read replacement/无法读取替换纹理 {path}: {exception.Message}");
             return false;
         }
     }
 
     /// <summary>
-    /// 统一路径分隔符并提取文件名，去掉支持的图片或纹理扩展名。
-    /// Normalize path separators and extract the filename, stripping supported image or texture extensions.
+    /// 提取资源标识符的末段并移除已知扩展名，仅验证用作文件名的部分。
+    /// Extract the asset identifier's last segment and strip known extensions, validating only the filename.
     /// </summary>
     /// <param name="name">纹理名称或文件路径 / The texture name or file path.</param>
-    /// <returns>索引查询与原图导出共用的纹理键 / The shared texture key for catalog lookup and original-image dumps.</returns>
+    /// <returns>可用的纹理键，名称无效时为 null / A usable texture key, or null for an invalid name.</returns>
     internal static string GetKey(string name)
     {
-        var fileName = Path.GetFileName(name.Replace('\\', '/'));
-        var extension = Path.GetExtension(fileName);
-        if (extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".tex", StringComparison.OrdinalIgnoreCase))
-            return Path.GetFileNameWithoutExtension(fileName);
-        return fileName;
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var separator = Math.Max(name.LastIndexOf('/'), name.LastIndexOf('\\'));
+        var key = name.Substring(separator + 1);
+        if (key.IndexOfAny(InvalidFileNameChars) >= 0) return null;
+
+        if (key.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith(".tex", StringComparison.OrdinalIgnoreCase))
+            key = key.Substring(0, key.LastIndexOf('.'));
+
+        return string.IsNullOrWhiteSpace(key) || key == "." || key == ".." ? null : key;
     }
 }
